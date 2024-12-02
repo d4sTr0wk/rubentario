@@ -1,0 +1,6 @@
+Base de datos:
+    · Por cada nodo hay una base de datos. Se almacena entradas, salidas y transferencias de cada almacén.
+    · Existe un catálogo de objetos, con unas características (ID, cantidad, umbral mínimo de existencias).
+    · 3 Bases de datos: transferencias entre almacenes, entradas (compras) y salidas (ventas).
+    · Las transacciones tienen: fecha, ID de transferencia, ID de objeto, cantidad, origen y destino (strings).
+    · Arquitectura híbrida de RabbitMQ y gRPC.
