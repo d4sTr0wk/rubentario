@@ -13,10 +13,15 @@ Este proyecto implementa un Sistema Distribuido de Gestión de Inventario en Tie
 Objetivo
 
 🔹 Consultar y actualizar inventarios en tiempo real.
+
 🔹 Sincronizar automáticamente los datos entre nodos.
+
 🔹 Generar alertas de reposición.
+
 🔹 Consultar inventarios globales desde múltiples almacenes.
+
 🔹 Registrar un historial detallado de movimientos.
+
 Arquitectura del Sistema
 
 El sistema está basado en una arquitectura distribuida con los siguientes componentes clave:
@@ -32,9 +37,13 @@ El sistema está basado en una arquitectura distribuida con los siguientes compo
 🚀 Funcionalidades Principales
 
 ✅ Gestión de Stock: Actualización y consulta en tiempo real.
+
 ✅ Sincronización Global: Cambios reflejados en todos los nodos.
+
 ✅ Alertas de Reposición: Notificaciones para stock bajo.
+
 ✅ Historial de Movimientos: Registro detallado de entradas, salidas y transferencias.
+
 🛠️ Tecnologías Utilizadas
 
     Lenguajes: Python.
