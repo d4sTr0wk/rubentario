@@ -1,0 +1,4 @@
+# Configuración entorno PyCharm
+.idea
+# Configuración entorno Python
+.venv
