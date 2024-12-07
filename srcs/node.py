@@ -1,129 +1,132 @@
+from flask import Flask, request, jsonify, render_template
 import pika
 import json
-import argparse
 import threading
+
+app = Flask(__name__)
 
 class Node:
     def __init__(self, name, request_queue, response_queue):
         self.name = name
         self.request_queue = request_queue
         self.response_queue = response_queue
-        self.connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
-        self.channel = self.connection.channel()
+        try:
+            self.connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+        except pika.exceptions.AMQPConnectionError as e:
+            print("Error connecting to RabbitMQ")
+            raise e
 
-        # Declare the queues
+        # Canal principal para consumir
+        self.channel = self.connection.channel()
         self.channel.queue_declare(queue=self.request_queue)
         self.channel.queue_declare(queue=self.response_queue)
+
+        # Canal exclusivo para publicar
+        self.publish_channel = self.connection.channel()
 
         # Local inventory for the node
         self.inventory = {}
 
-    def add_item(self, product, quantity):
-        """Add or update an item in the inventory"""
-        if product in self.inventory:
-            self.inventory[product] += quantity
-        else:
-            self.inventory[product] = quantity
-        print(f"[{self.name}] Added {quantity} units of {product} to inventory.")
+        # Notifications for incoming requests
+        self.requests = []
 
-    def list_inventory(self):
-        """List the current inventory"""
-        print(f"[{self.name}] Current Inventory:")
-        for product, quantity in self.inventory.items():
-            print(f"  - {product}: {quantity} units")
+        # Start listening in a thread
+        self.stop_event = threading.Event()
+        threading.Thread(target=self.start_listening, daemon=True).start()
 
     def handle_request(self, ch, method, properties, body):
-        """Handle a request received in the request queue"""
+        """Handle a request received in the request queue."""
         message = json.loads(body)
         product = message.get("product")
         origin_node = message.get("origin_node")
+        quantity = message.get("quantity")
+        self.requests.append({"origin_node": origin_node, "product": product, "quantity": quantity})
 
-        print(f"[{self.name}] Request received from {origin_node} for {product}")
-
-        # Check local inventory
-        quantity = self.inventory.get(product, 0)
-
-        # Send a response
-        response = {"destination_node": origin_node, "product": product, "quantity": quantity}
-        self.channel.basic_publish(exchange='', routing_key=origin_node, body=json.dumps(response))
-        print(f"[{self.name}] Response sent to {origin_node}: {quantity} units of {product}")
-
-    def send_request(self, destination_node, product):
-        """Send a request to another node"""
-        print(f"[{self.name}] Sending request to {destination_node} for {product}")
-        message = {"origin_node": self.response_queue, "product": product}
-        self.channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message))
-
-    def handle_response(self, ch, method, properties, body):
-        """Handle a response received from another node"""
-        response = json.loads(body)
-        product = response.get("product")
-        quantity = response.get("quantity")
-        print(f"[{self.name}] Response received: {quantity} units of {product}")
+    def send_request(self, destination_node, product, quantity):
+        """Send a request to another node."""
+        message = {"origin_node": self.response_queue, "product": product, "quantity": quantity}
+        self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message))
 
     def start_listening(self):
-        """Start listening on both the request and response queues"""
-        # Listen for requests
+        """Start listening on both the request and response queues."""
         self.channel.basic_consume(queue=self.request_queue, on_message_callback=self.handle_request, auto_ack=True)
+        while not self.stop_event.is_set():
+            self.connection.process_data_events(time_limit=1)
 
-        # Listen for responses
-        self.channel.basic_consume(queue=self.response_queue, on_message_callback=self.handle_response, auto_ack=True)
+    def stop_listening(self):
+        """Stop listening safely."""
+        self.stop_event.set()
+        if self.connection and self.connection.is_open:
+            self.connection.close()
 
-        print(f"[{self.name}] Listening on queues '{self.request_queue}' and '{self.response_queue}'...")
-        self.channel.start_consuming()
+node = Node(name="Warehouse 1", request_queue="node1_requests", response_queue="node1_responses")
 
-    def start_menu(self):
-        """Display a menu for interactive functionality"""
-        while True:
-            print(f"\n[{self.name}] MENU:")
-            print("1. Add Item to Inventory")
-            print("2. List Inventory")
-            print("3. Send Request to Another Node")
-            print("4. Exit")
-            choice = input("Choose an option: ")
+# --- Flask Routes ---
+@app.route("/")
+def index():
+    """Home page: Show inventory and requests."""
+    return render_template("index.html", inventory=node.inventory, requests=node.requests)
 
-            if choice == "1":
-                product = input("Enter product name: ")
-                quantity = int(input("Enter quantity: "))
-                self.add_item(product, quantity)
+@app.route("/buy", methods=["POST"])
+def buy_item():
+    """Buy an item for the inventory."""
+    data = request.json
+    seller = data["seller"]
+    product = data["product"]
+    quantity = int(data["quantity"])
 
-            elif choice == "2":
-                self.list_inventory()
+    if product in node.inventory:
+        node.inventory[product] += quantity
+    else:
+        node.inventory[product] = quantity
 
-            elif choice == "3":
-                destination = input("Enter destination node queue: ")
-                product = input("Enter product to query: ")
-                self.send_request(destination_node=destination, product=product)
+    return jsonify({"message": f"Added {quantity} units of {product} to inventory from {seller}"}), 200
 
-            elif choice == "4":
-                print(f"[{self.name}] Exiting...")
-                self.connection.close()
-                break
+@app.route("/sell", methods=["POST"])
+def sell_item():
+    """Sell an item from the inventory."""
+    data = request.json
+    product = data["product"]
+    quantity = int(data["quantity"])
 
-            else:
-                print("Invalid option. Please try again.")
+    if product in node.inventory and node.inventory[product] >= quantity:
+        node.inventory[product] -= quantity
+        return jsonify({"message": f"Sold {quantity} units of {product}"}), 200
+    else:
+        return jsonify({"error": f"Not enough stock for {product}"}), 400
 
-def main():
-    # Parse command-line arguments
-    parser = argparse.ArgumentParser(description="Distributed Inventory Node")
-    parser.add_argument("--name", required=True, help="Name of the node")
-    parser.add_argument("--request_queue", required=True, help="Request queue for the node")
-    parser.add_argument("--response_queue", required=True, help="Response queue for the node")
-    args = parser.parse_args()
+@app.route("/inventory", methods=["GET"])
+def inventory():
+    """Show the current inventory in the warehouse."""
+    # Mostrar el inventario en formato JSON
+    return jsonify(node.inventory), 200
 
-    # Create a node
-    node = Node(name=args.name, request_queue=args.request_queue, response_queue=args.response_queue)
+@app.route("/send_request", methods=["POST"])
+def send_request():
+    """Send a request to another node."""
+    data = request.json
+    destination_node = data["destination_node"]
+    product = data["product"]
+    quantity = int(data["quantity"])
+    node.send_request(destination_node=destination_node, product=product, quantity=quantity)
+    return jsonify({"message": f"Request for {product} sent to {destination_node} ({quantity} units)"}), 200
 
-    # Add some inventory items for testing
-    node.add_item("Product A", 100)
-    node.add_item("Product B", 50)
+@app.route("/requests", methods=["GET"])
+def handle_requests():
+    """Handle incoming requests."""
+    if node.requests:
+        notification = node.requests.pop(0)
+        product = notification["product"]
+        origin_node = notification["origin_node"]
+        quantity = notification["quantity"]
+        return jsonify({"origin_node": origin_node, "product": product, "quantity" : quantity}), 200
+    return jsonify({"message": "No requests"}), 204
 
-    # Start the listening thread
-    threading.Thread(target=node.start_listening, daemon=True).start()
-
-    # Start the interactive menu
-    node.start_menu()
-
+@app.route("/stop", methods=["POST"])
+def stop():
+    """Stop the node."""
+    node.stop_listening()
+    return jsonify({"message": "Node stopped"}), 200
 
 if __name__ == "__main__":
-    main()
+    app.run(debug=True)
