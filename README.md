@@ -56,7 +56,8 @@ El sistema está basado en una arquitectura distribuida con los siguientes compo
     > git clone https://github.com/tu-usuario/tu-repositorio.git
 
 # 2. Ejecuta el sistema
-    > python main.py
+    > sourc .venv/bin/activate
+    > python srcs/node.py
 
 📄 Documentación Técnica
 
