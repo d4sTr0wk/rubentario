@@ -5,8 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Warehouse Management</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> <!-- jQuery -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/style.css') }}">
 </head>
 <body>
+	<h3>Welcome, {{ username }}</h3>
+	<a href="/logout">Logout</a>
     <h1>Warehouse Inventory</h1>
     <ul id="inventory-list">
         <!-- List of inventory items will be shown here -->
@@ -50,7 +53,7 @@
 		<label for="quantity-request">Quantity:</label>
 		<input type="number" id="quantity-request" name="quantity">
         <button type="submit">Send</button>
-    </form>
+    </for>
 
 	<script src="../static/scripts/main.js"></script>
 </body>

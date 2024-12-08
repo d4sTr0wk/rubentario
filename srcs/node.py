@@ -1,9 +1,15 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session
 import pika
 import json
 import threading
 
 app = Flask(__name__)
+app.secret_key = "vc0910$$"
+
+#Predifined users
+users = {
+    "admin": "admin",
+}
 
 class Node:
     def __init__(self, name, request_queue, response_queue):
@@ -65,7 +71,27 @@ node = Node(name="Warehouse 1", request_queue="node1_requests", response_queue="
 @app.route("/")
 def index():
     """Home page: Show inventory and requests."""
-    return render_template("index.html", inventory=node.inventory, requests=node.requests)
+    if "username" not in session:
+        return redirect(url_for("login"))
+    return render_template("index.html", inventory=node.inventory, requests=node.requests, username=session["username"])
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """Login page."""
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+        if username in users and users[username] == password:
+            session["username"] = username
+            return redirect(url_for("index"))
+        return "Invalid credentials"
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    """Logout the user."""
+    session.pop("username", None)
+    return redirect(url_for("login"))
 
 @app.route("/buy", methods=["POST"])
 def buy_item():
@@ -86,12 +112,13 @@ def buy_item():
 def sell_item():
     """Sell an item from the inventory."""
     data = request.json
+    client = data["client"]
     product = data["product"]
     quantity = int(data["quantity"])
 
     if product in node.inventory and node.inventory[product] >= quantity:
         node.inventory[product] -= quantity
-        return jsonify({"message": f"Sold {quantity} units of {product}"}), 200
+        return jsonify({"message": f"Sold {quantity} units of {product} to {client}"}), 200
     else:
         return jsonify({"error": f"Not enough stock for {product}"}), 400
 
