@@ -24,6 +24,7 @@ function updateRequests() {
 		}
 	});
 }
+
 // Handle buying a product
 $('#buy-form').on('submit', function(e) {
 	e.preventDefault();
@@ -59,14 +60,12 @@ $('#sell-form').on('submit', function(e) {
 			updateInventory();  // Update inventory after selling
 			updateRequests();  // Check for new notifications
 		},
-		error: function(err) {
-			// Extract the error message from the JSON error response
-			console.log(err);
-			const errorMessage = err.responseJSON ? err.responseJSON.message : 'An unexpected error occurred';
-			alert(errorMessage);
+		error: function(response) {
+			alert(response.responseJSON.error);
 		}
 	});
 });
+
 // Handle sending a manual notification
 $('#send-request-form').on('submit', function(e) {
 	e.preventDefault();
@@ -84,6 +83,7 @@ $('#send-request-form').on('submit', function(e) {
 		}
 	});
 });
+
 // Initial call to update inventory and notifications
 updateInventory();
 updateRequests();
