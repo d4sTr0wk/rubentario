@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 import pika
 import json
 import threading
+import argparse
 
 app = Flask(__name__)
 app.secret_key = "vc0910$$"
@@ -12,8 +13,8 @@ users = {
 }
 
 class Node:
-    def __init__(self, name, request_queue, response_queue):
-        self.name = name
+    def __init__(self, id, request_queue, response_queue):
+        self.id = id
         self.request_queue = request_queue
         self.response_queue = response_queue
         try:
@@ -65,15 +66,13 @@ class Node:
         if self.connection and self.connection.is_open:
             self.connection.close()
 
-node = Node(name="Warehouse 1", request_queue="node1_requests", response_queue="node1_responses")
-
 # --- Flask Routes ---
 @app.route("/")
 def index():
     """Home page: Show inventory and requests."""
     if "username" not in session:
         return redirect(url_for("login"))
-    return render_template("index.html", inventory=node.inventory, requests=node.requests, username=session["username"])
+    return render_template("index.html", node_id = node.id, inventory=node.inventory, requests=node.requests, username=session["username"])
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -85,7 +84,7 @@ def login():
             session["username"] = username
             return redirect(url_for("index"))
         return "Invalid credentials"
-    return render_template("login.html")
+    return render_template("login.html", node_id=node.id)
 
 @app.route("/logout")
 def logout():
@@ -156,4 +155,11 @@ def stop():
     return jsonify({"message": "Node stopped"}), 200
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--id', required=True, help='Node ID')
+    parser.add_argument('--request_queue', required=True, help='Request Queue')
+    parser.add_argument('--response_queue', required=True, help='Response Queue')
+    parser.add_argument('--port', required=True, help='Port for the node')
+    args = parser.parse_args()
+    node = Node(id=args.id, request_queue=args.request_queue, response_queue=args.response_queue)
+    app.run(debug=True, host="127.0.0.1", port=args.port)

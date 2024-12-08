@@ -54,7 +54,7 @@ $('#sell-form').on('submit', function(e) {
 		url: '/sell',
 		method: 'POST',
 		contentType: 'application/json',
-		data: JSON.stringify({ product: product, quantity: quantity }),
+		data: JSON.stringify({ client: client, product: product, quantity: quantity }),
 		success: function(response) {
 			alert(response.message);
 			updateInventory();  // Update inventory after selling
