@@ -69,14 +69,14 @@ $('#sell-form').on('submit', function(e) {
 // Handle sending a manual notification
 $('#send-request-form').on('submit', function(e) {
 	e.preventDefault();
-	const node = $('#node-request').val();
+	const destination_node = $('#node-id-request').val();
 	const product = $('#product-request').val();
 	const quantity = $('#quantity-request').val();
 	$.ajax({
 		url: '/send_request',
 		method: 'POST',
 		contentType: 'application/json',
-		data: JSON.stringify({ node: node, product: product, quantity: quantity }),
+		data: JSON.stringify({ destination_node: destination_node, product: product, quantity: quantity }),
 		success: function(response) {
 			alert(response.message);
 			updateRequests();  // Update notifications after sending a new one

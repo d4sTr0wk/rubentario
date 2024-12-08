@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session
+from threading import Lock
 import pika
 import json
 import threading
@@ -9,20 +10,21 @@ app.secret_key = "vc0910$$"
 
 #Predifined users
 users = {
-    "admin": "admin",
+    "admin": "vc0910$$",
 }
 
 class Node:
     def __init__(self, id, request_queue, response_queue):
+        self.lock = Lock()
         self.id = id
         self.request_queue = request_queue
         self.response_queue = response_queue
         try:
             self.connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         except pika.exceptions.AMQPConnectionError as e:
-            print("Error connecting to RabbitMQ")
+            print(f"Error connecting to RabbitMQ: {e}")
             raise e
-
+    
         # Canal principal para consumir
         self.channel = self.connection.channel()
         self.channel.queue_declare(queue=self.request_queue)
@@ -47,18 +49,26 @@ class Node:
         product = message.get("product")
         origin_node = message.get("origin_node")
         quantity = message.get("quantity")
-        self.requests.append({"origin_node": origin_node, "product": product, "quantity": quantity})
+        with self.lock:
+            self.requests.append({"origin_node": origin_node, "product": product, "quantity": quantity})
 
     def send_request(self, destination_node, product, quantity):
         """Send a request to another node."""
         message = {"origin_node": self.response_queue, "product": product, "quantity": quantity}
-        self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message))
+        try:
+            self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message))
+        except pika.exceptions.AMQError as e:
+            print(f"Error sending request to {destination_node} ({e})")
 
     def start_listening(self):
         """Start listening on both the request and response queues."""
         self.channel.basic_consume(queue=self.request_queue, on_message_callback=self.handle_request, auto_ack=True)
         while not self.stop_event.is_set():
-            self.connection.process_data_events(time_limit=1)
+            try:
+                self.connection.process_data_events(time_limit=1)
+            except pika.exceptions.ConnectionClosed as e:
+                print(f"Connection closed, stopping listening thread for {self.id} ({e})")
+                break
 
     def stop_listening(self):
         """Stop listening safely."""
@@ -130,22 +140,32 @@ def inventory():
 @app.route("/send_request", methods=["POST"])
 def send_request():
     """Send a request to another node."""
-    data = request.json
-    destination_node = data["destination_node"]
-    product = data["product"]
-    quantity = int(data["quantity"])
-    node.send_request(destination_node=destination_node, product=product, quantity=quantity)
-    return jsonify({"message": f"Request for {product} sent to {destination_node} ({quantity} units)"}), 200
+    try:
+        data = request.json
+        destination_node = data["destination_node"] + "_requests"
+        product = data["product"]
+        quantity = int(data["quantity"])
+        print(f"Sending request to {destination_node} for {product} ({quantity} units)")
+        node.send_request(destination_node=destination_node, product=product, quantity=quantity)
+        return jsonify({"message": f"Request for {product} sent to {destination_node} ({quantity} units)"}), 200
+    except KeyError as e:
+        return jsonify({"error": f"Missing key in request data ({e})"}), 400
+    except ValueError as e:
+        return jsonify({"error": f"Invalid quantity ({e})"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Internal unexpected server error ({str(e)})"}), 500
+
 
 @app.route("/requests", methods=["GET"])
 def handle_requests():
     """Handle incoming requests."""
-    if node.requests:
-        notification = node.requests.pop(0)
-        product = notification["product"]
-        origin_node = notification["origin_node"]
-        quantity = notification["quantity"]
-        return jsonify({"origin_node": origin_node, "product": product, "quantity" : quantity}), 200
+    with node.lock:
+        if node.requests:
+            notification = node.requests.pop(0)
+            product = notification["product"]
+            origin_node = notification["origin_node"]
+            quantity = notification["quantity"]
+            return jsonify({"origin_node": origin_node, "product": product, "quantity" : quantity}), 200
     return jsonify({"message": "No requests"}), 204
 
 @app.route("/stop", methods=["POST"])
@@ -162,4 +182,4 @@ if __name__ == "__main__":
     parser.add_argument('--port', required=True, help='Port for the node')
     args = parser.parse_args()
     node = Node(id=args.id, request_queue=args.request_queue, response_queue=args.response_queue)
-    app.run(debug=True, host="127.0.0.1", port=args.port)
+    app.run(debug=True, host="0.0.0.0", port=args.port)
