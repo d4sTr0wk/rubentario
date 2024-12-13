@@ -28,7 +28,7 @@ El sistema está basado en una arquitectura distribuida con los siguientes compo
 
     Modelo: Peer-to-Peer.
     Middleware: RabbitMQ.
-    Persistencia: Bases de datos distribuidas Redis.
+    Persistencia: Bases de datos distribuidas PostgreSQL.
     Algoritmos Distribuidos:
         Exclusión Mutua Distribuida: Prevención de conflictos en accesos concurrentes.
         Snapshots Distribuidos: Sincronización del estado global.
@@ -48,16 +48,42 @@ El sistema está basado en una arquitectura distribuida con los siguientes compo
 
     Lenguajes: Python.
     Middleware: RabbitMQ.
-    Bases de Datos: Redis.
+    Bases de Datos: PostgreSQL.
 
 📦 Instalación
 
 # 1. Clona el repositorio
-    > git clone https://github.com/tu-usuario/tu-repositorio.git
+```sh
+git clone https://github.com/tu-usuario/tu-repositorio.git
+```
 
-# 2. Ejecuta el sistema
-    > source .venv/bin/activate
-    > python srcs/node.py
+# 2. Instala dependencias
+Para el uso del canal principal de comunicación entre inventarios hay que instalar RabbitMQ.
+
+En Ubuntu:
+
+```sh
+sudo apt-get update
+sudo apt-get upgrade -y
+sudo apt-get install erlang
+sudo apt-get install rabbitmq-server
+```
+
+# 3. Inicia el servidor RabbitMQ
+```sh
+sudo systemctl start rabbitmq-server.service
+```
+Para que el servidor arranque siempre si se interrumpiese:
+```sh
+sudo systemctl enable rabbitmq-server.service
+```
+
+# 4. Ejecuta el sistema
+```sh
+source .venv/bin/activate
+chmod +x ./rubentario.sh
+./rubentario
+```
 
 📄 Documentación Técnica
 
