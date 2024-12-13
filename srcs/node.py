@@ -14,24 +14,24 @@ users = {
 }
 
 class Node:
-    def __init__(self, id, request_queue, response_queue):
+    def __init__(self, id, requests_queue):
         self.lock = Lock()
         self.id = id
-        self.request_queue = request_queue
-        self.response_queue = response_queue
+		# Requests received from other nodes
+        self.requests_queue = requests_queue
         try:
-            self.connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+            self.publish_connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+			self.consume_connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         except pika.exceptions.AMQPConnectionError as e:
             print(f"Error connecting to RabbitMQ: {e}")
             raise e
     
-        # Canal principal para consumir
-        self.channel = self.connection.channel()
-        self.channel.queue_declare(queue=self.request_queue)
-        self.channel.queue_declare(queue=self.response_queue)
+        # Consume channel for listening to requests from other nodes
+        self.consume_channel = self.consume_connection.channel()
+        self.consume_channel.queue_declare(queue=self.requests_queue)
 
-        # Canal exclusivo para publicar
-        self.publish_channel = self.connection.channel()
+        # Publish channel for sending requests and responses to other nodes
+        self.publish_channel = self.publish_connection.channel()
 
         # Local inventory for the node
         self.inventory = {}
@@ -40,41 +40,35 @@ class Node:
         self.requests = []
 
         # Start listening in a thread
-        self.stop_event = threading.Event()
-        threading.Thread(target=self.start_listening, daemon=True).start()
+        self.listening_thread = threading.Thread(target=self.start_listening, daemon=True).start()
 
     def handle_request(self, ch, method, properties, body):
         """Handle a request received in the request queue."""
         message = json.loads(body)
-        product = message.get("product")
         origin_node = message.get("origin_node")
+        product = message.get("product")
         quantity = message.get("quantity")
         with self.lock:
-            self.requests.append({"origin_node": origin_node, "product": product, "quantity": quantity})
+            self.requests_queue.append({"origin_node": origin_node, "product": product, "quantity": quantity})
 
     def send_request(self, destination_node, product, quantity):
         """Send a request to another node."""
-        message = {"origin_node": self.response_queue, "product": product, "quantity": quantity}
+        message = {"origin_node": self.id, "product": product, "quantity": quantity}
         try:
             self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message))
         except pika.exceptions.AMQError as e:
             print(f"Error sending request to {destination_node} ({e})")
 
     def start_listening(self):
-        """Start listening on both the request and response queues."""
-        self.channel.basic_consume(queue=self.request_queue, on_message_callback=self.handle_request, auto_ack=True)
-        while not self.stop_event.is_set():
-            try:
-                self.connection.process_data_events(time_limit=1)
-            except pika.exceptions.ConnectionClosed as e:
-                print(f"Connection closed, stopping listening thread for {self.id} ({e})")
-                break
+        """Start listening on the requests queue."""
+        self.consume_channel.basic_consume(queue=self.requests_queue, on_message_callback=self.handle_request, auto_ack=True)
+		self.consume_channel.start_consuming()
 
     def stop_listening(self):
         """Stop listening safely."""
         self.stop_event.set()
-        if self.connection and self.connection.is_open:
-            self.connection.close()
+        if self.consume_connection and self.consume_connection.is_open:
+            self.consume_connection.close()
 
 # --- Flask Routes ---
 @app.route("/")
@@ -137,6 +131,11 @@ def inventory():
     # Mostrar el inventario en formato JSON
     return jsonify(node.inventory), 200
 
+@app.route("/requests", methods=["GET"])
+def requests():
+    """Show the current requests queue in the warehouse"""
+    return jsonify(node.requests), 200
+
 @app.route("/send_request", methods=["POST"])
 def send_request():
     """Send a request to another node."""
@@ -154,19 +153,6 @@ def send_request():
         return jsonify({"error": f"Invalid quantity ({e})"}), 400
     except Exception as e:
         return jsonify({"error": f"Internal unexpected server error ({str(e)})"}), 500
-
-
-@app.route("/requests", methods=["GET"])
-def handle_requests():
-    """Handle incoming requests."""
-    with node.lock:
-        if node.requests:
-            notification = node.requests.pop(0)
-            product = notification["product"]
-            origin_node = notification["origin_node"]
-            quantity = notification["quantity"]
-            return jsonify({"origin_node": origin_node, "product": product, "quantity" : quantity}), 200
-    return jsonify({"message": "No requests"}), 204
 
 @app.route("/stop", methods=["POST"])
 def stop():

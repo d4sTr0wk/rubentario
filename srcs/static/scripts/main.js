@@ -10,19 +10,12 @@ function updateInventory() {
 }
 
 // Function to fetch and update notifications
-function updateRequests() {
-	$.get("/requests", function(data) {
-		let requestsList = '';
-		$('#requests-list').empty();
-		for (let request in data) {
-			requestsList += `<li>${data[request]}</li>`;
-		}
-		if (requestsList) {
-			$('#requests-list').html(requestsList);
-		} else {
-			$('#requests-list').append('<li>No new requests</li>');
-		}
-	});
+function updateRequests(requests) {
+	const listRequests = document.getElementById('requests-list');
+	listElement.innetHTML = ''; // Clean list
+
+	// Iterate each request and add it to the list
+	requests
 }
 
 // Handle buying a product
