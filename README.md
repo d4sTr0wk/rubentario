@@ -50,18 +50,11 @@ El sistema está basado en una arquitectura distribuida con los siguientes compo
     Middleware: RabbitMQ.
     Bases de Datos: PostgreSQL.
 
-📦 Instalación
+## 🚀 Installation
 
-# 1. Clona el repositorio
-```sh
-git clone https://github.com/tu-usuario/tu-repositorio.git
-```
+### Prerrequisitos
 
-# 2. Instala dependencias
-Para el uso del canal principal de comunicación entre inventarios hay que instalar RabbitMQ.
-
-En Ubuntu:
-
+- Instalar dependencias para la comunicación por canales con [RabbitMQ](https://github.com/rabbitmq).
 ```sh
 sudo apt-get update
 sudo apt-get upgrade -y
@@ -69,7 +62,12 @@ sudo apt-get install erlang
 sudo apt-get install rabbitmq-server
 ```
 
-# 3. Inicia el servidor RabbitMQ
+### Paso 1. Clona el repositorio
+```sh
+git clone https://github.com/tu-usuario/tu-repositorio.git
+```
+
+### Paso 2. Inicia el servidor RabbitMQ
 ```sh
 sudo systemctl start rabbitmq-server.service
 ```
@@ -78,17 +76,17 @@ Para que el servidor arranque siempre si se interrumpiese:
 sudo systemctl enable rabbitmq-server.service
 ```
 
-# 4. Ejecuta el sistema
+### Paso 3. Ejecuta el sistema
 ```sh
 source .venv/bin/activate
 chmod +x ./rubentario.sh
 ./rubentario
 ```
 
-📄 Documentación Técnica
+## 📄 Documentación Técnica
 
-📂 Toda la documentación, incluyendo diagramas y explicaciones detalladas, está disponible en la carpeta docs.
+Toda la documentación, incluyendo diagramas y explicaciones detalladas, está disponible en la carpeta docs.
 
-📝 Licencia
+## 📝 Licencia
 
 Este proyecto está bajo la licencia MIT.
