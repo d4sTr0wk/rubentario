@@ -80,6 +80,9 @@ $('#send-request-form').on('submit', function(e) {
 	});
 });
 
-// Initial call to update inventory and notifications
+// Initial call to update inventory and notifications (also in case web is refreshed)
 updateInventory();
+updateRequests();
+
+// Interval of long polling to append new requests
 setInterval(updateRequests, 60000)

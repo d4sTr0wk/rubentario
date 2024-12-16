@@ -1,4 +1,8 @@
 # Configuración entorno PyCharm
 .idea
 # Configuración entorno Python
+venv
 .venv
+
+# Vim swaps
+.*.swp
