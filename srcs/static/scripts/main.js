@@ -1,21 +1,24 @@
 // Function to fetch and update the inventory
 function updateInventory() {
-	$.get("/inventory", function(data) {
+	$.get("/show_inventory", function(data) {
 		let inventoryList = '';
-		for (let product in data) {
+		for(let product in data) {
 			inventoryList += `<li>${product}: ${data[product]} units</li>`;
 		}
 		$('#inventory-list').html(inventoryList);
 	});
 }
 
-// Function to fetch and update notifications
-function updateRequests(requests) {
-	const listRequests = document.getElementById('requests-list');
-	listElement.innetHTML = ''; // Clean list
+// Function update requests list
+function updateRequests() {
+	$.get("/show_requests", function(data) {
+		let requestList = '';
+		data.forEach(function(item) {
+			requestList += `<li>Requester Node: ${item.requester_node}, Product: ${item.product}, Quantity: ${item.quantity}</li>`;
+		});
 
-	// Iterate each request and add it to the list
-	requests
+		$('#requests-list').html(requestList);
+	});
 }
 
 // Handle buying a product
@@ -32,7 +35,6 @@ $('#buy-form').on('submit', function(e) {
 		success: function(response) {
 			alert(response.message);
 			updateInventory();  // Update inventory after buying
-			updateRequests();  // Check for new notifications
 		}
 	});
 });
@@ -51,7 +53,6 @@ $('#sell-form').on('submit', function(e) {
 		success: function(response) {
 			alert(response.message);
 			updateInventory();  // Update inventory after selling
-			updateRequests();  // Check for new notifications
 		},
 		error: function(response) {
 			alert(response.responseJSON.error);
@@ -72,11 +73,13 @@ $('#send-request-form').on('submit', function(e) {
 		data: JSON.stringify({ destination_node: destination_node, product: product, quantity: quantity }),
 		success: function(response) {
 			alert(response.message);
-			updateRequests();  // Update notifications after sending a new one
+		},
+		error: function(response) {
+			alert(response.responseJSON.error);
 		}
 	});
 });
 
 // Initial call to update inventory and notifications
 updateInventory();
-updateRequests();
+setInterval(updateRequests, 60000)

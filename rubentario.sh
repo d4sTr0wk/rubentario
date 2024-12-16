@@ -23,7 +23,6 @@ if [[ ! "$NODE_ID" =~ ^[a-zA-Z0-9_]+$ ]]; then
 fi
 
 REQUESTS_QUEUE="${NODE_ID}_requests"
-RESPONSES_QUEUE="${NODE_ID}_responses"
 
 # Check for available port (starting from 5000)
 PORT=5000
@@ -31,7 +30,7 @@ while lsof -i:$PORT > /dev/null; do
 	PORT=$((PORT + 1))
 done
 
-echo "Starting node $NODE_ID on port $PORT with queues $REQUESTS_QUEUE and $RESPONSES_QUEUE..."
+echo "Starting node $NODE_ID on port $PORT with queues $REQUESTS_QUEUE"
 
 # Create virtual environment if it doesn't exist
 if [ ! -d ".venv" ]; then
@@ -45,4 +44,4 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # Run the Python node script with dynamic parameters
-python srcs/node.py --id "$NODE_ID" --requests_queue "$REQUESTS_QUEUE" --responses_queue "$RESPONSES_QUEUE" --port "$PORT"
+python3 srcs/node.py --id "$NODE_ID" --requests_queue "$REQUESTS_QUEUE" --port "$PORT"
