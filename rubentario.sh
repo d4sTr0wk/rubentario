@@ -32,35 +32,5 @@ done
 
 echo "Starting node $NODE_ID on port $PORT with queues $REQUESTS_QUEUE"
 
-# Create virtual environment if it doesn't exist
-if [ ! -f ".venv/bin/activate" ]; then
-	python3 -m venv .venv
-fi
-
-# Activate virtual environment
-source .venv/bin/activate
-
-missing_packages=""
-
-# Read requirements.txt 
-while IFS= read -r package; do
-    # Ignore empty lines or comments
-    if [[ -z "$package" || "$package" == \#* ]]; then
-        continue
-    fi
-
-    # Check for pack installation
-    if !pip show "$package" > /dev/null 2>&1; then
-		missing_packages=true
-    fi
-done < "requirements.txt"
-
-# Install dependencies
-if [ "$missing_packages" = true ]; then
-	pip install -r requirements.txt
-else
-	echo "Packages are installed."
-fi
-
 # Run the Python node script with dynamic parameters
 python3 srcs/node.py --id "$NODE_ID" --requests_queue "$REQUESTS_QUEUE" --port "$PORT"

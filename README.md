@@ -78,9 +78,11 @@ sudo systemctl enable rabbitmq-server.service
 
 ### Paso 3. Ejecuta el sistema
 ```sh
+python3 -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
 chmod +x ./rubentario.sh
-./rubentario
+./rubentario.sh <node-id>
 ```
 
 ## 📄 Documentación Técnica
