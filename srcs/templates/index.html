@@ -3,59 +3,239 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>{{ node_id }} Management</title>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> <!-- jQuery -->
-	<script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script> <!-- socketio -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles/style.css') }}">
+    <title>{{ node_id }} Management</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+    <style>
+        /* Modern Minimalist Design */
+        :root {
+            --primary-color: #4a90e2;
+            --background-color: #f4f7f6;
+            --text-color: #2c3e50;
+            --card-background: #ffffff;
+            --soft-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .card {
+            background-color: var(--card-background);
+            border-radius: 12px;
+            box-shadow: var(--soft-shadow);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .form-control {
+            margin-bottom: 1rem;
+        }
+
+        .form-control label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--text-color);
+        }
+
+        .form-control input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-control input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 0.75rem;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .btn:hover {
+            background-color: #3a7bd5;
+        }
+
+        .logout-link {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .logout-link:hover {
+            color: #2c3e50;
+            text-decoration: underline;
+        }
+
+        .list-section {
+            margin-bottom: 2rem;
+        }
+
+        .list-section h2 {
+            margin-bottom: 1rem;
+            font-size: 1.4rem;
+            font-weight: 600;
+        }
+
+        #inventory-list, #requests-list {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        #inventory-list li, #requests-list li {
+            background-color: var(--card-background);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            box-shadow: var(--soft-shadow);
+            transition: transform 0.3s ease;
+        }
+
+        #inventory-list li:hover, #requests-list li:hover {
+            transform: scale(1.02);
+        }
+    </style>
 </head>
 <body>
-	<h3>Welcome, {{ username }}</h3>
-	<a href="/logout">Logout</a>
-	<h1>Warehouse {{ node_id }} Inventory</h1>
-    <ul id="inventory-list">
-        <!-- List of inventory items will be shown here -->
-    </ul>
+    <div class="container">
+        <div class="header">
+            <h1>Warehouse {{ node_id }} Management</h1>
+            <a href="/logout" class="logout-link">Logout</a>
+        </div>
 
-    <h2>Requests</h2>
-    <ul id="requests-list">
-        <!-- Requests will be shown here -->
-    </ul>
+        <div class="card">
+            <h3>Welcome, {{ username }}</h3>
+        </div>
 
-    <h2>Actions</h2>
-    <!-- Form to buy product -->
-    <form id="buy-form">
-		<label for="seller-buy">Seller:</label>
-		<input type="text" id="seller-buy" name="seller">
-        <label for="product-buy">Product:</label>
-        <input type="text" id="product-buy" name="product">
-        <label for="quantity-buy">Quantity:</label>
-        <input type="number" id="quantity-buy" name="quantity">
-        <button type="submit">Buy</button>
-    </form>
+        <div class="list-section">
+            <h2>Inventory</h2>
+            <ul id="inventory-list">
+                <!-- List of inventory items will be shown here -->
+            </ul>
+        </div>
 
-    <!-- Form to sell product -->
-    <form id="sell-form">
-		<label for="client-sell">Client:</label>
-		<input type="text" id="client-sell" name="client">
-        <label for="product-sell">Product:</label>
-        <input type="text" id="product-sell" name="product">
-        <label for="quantity-sell">Quantity:</label>
-        <input type="number" id="quantity-sell" name="quantity">
-        <button type="submit">Sell</button>
-    </form>
+        <div class="list-section">
+            <h2>Requests</h2>
+            <ul id="requests-list">
+                <!-- Requests will be shown here -->
+            </ul>
+        </div>
 
-    <!-- Form to send a manual notification -->
-    <h2>Send Request</h2>
-    <form id="send-request-form">
-		<label for="node-id-request">Node ID:</label>
-		<input type="text" id="node-id-request" name="node">
-        <label for="product-request">Product:</label>
-        <input type="text" id="product-request" name="product">
-		<label for="quantity-request">Quantity:</label>
-		<input type="number" id="quantity-request" name="quantity">
-        <button type="submit">Send</button>
-    </form>
+        <div class="form-grid">
+            <div class="card">
+                <h2>Buy Product</h2>
+                <form id="buy-form">
+                    <div class="form-control">
+                        <label for="seller-buy">Seller:</label>
+                        <input type="text" id="seller-buy" name="seller">
+                    </div>
+                    <div class="form-control">
+                        <label for="product-buy">Product:</label>
+                        <input type="text" id="product-buy" name="product">
+                    </div>
+                    <div class="form-control">
+                        <label for="quantity-buy">Quantity:</label>
+                        <input type="number" id="quantity-buy" name="quantity">
+                    </div>
+                    <button type="submit" class="btn">Buy</button>
+                </form>
+            </div>
 
-	<script src="../static/scripts/main.js"></script>
+            <div class="card">
+                <h2>Sell Product</h2>
+                <form id="sell-form">
+                    <div class="form-control">
+                        <label for="client-sell">Client:</label>
+                        <input type="text" id="client-sell" name="client">
+                    </div>
+                    <div class="form-control">
+                        <label for="product-sell">Product:</label>
+                        <input type="text" id="product-sell" name="product">
+                    </div>
+                    <div class="form-control">
+                        <label for="quantity-sell">Quantity:</label>
+                        <input type="number" id="quantity-sell" name="quantity">
+                    </div>
+                    <button type="submit" class="btn">Sell</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Send Request</h2>
+            <form id="send-request-form">
+                <div class="form-control">
+                    <label for="node-id-request">Node ID:</label>
+                    <input type="text" id="node-id-request" name="node">
+                </div>
+                <div class="form-control">
+                    <label for="product-request">Product:</label>
+                    <input type="text" id="product-request" name="product">
+                </div>
+                <div class="form-control">
+                    <label for="quantity-request">Quantity:</label>
+                    <input type="number" id="quantity-request" name="quantity">
+                </div>
+                <button type="submit" class="btn">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="../static/scripts/main.js"></script>
 </body>
 </html>

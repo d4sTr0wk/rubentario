@@ -94,16 +94,18 @@ def login():
 		password = request.form["password"]
 		if username in users and users[username] == password:
 			session["username"] = username
-			return redirect(url_for("index"))
-		return "Invalid credentials"
-	return render_template("login.html", node_id=node.id)
+			return redirect(url_for('index'))
+		return render_template('login.html', error='Invalid credentials')
+	return render_template('login.html', node_id=node.id)
 
+"""Logout option"""
 @app.route("/logout")
 def logout():
 	# Logout the user
 	session.pop("username", None)
 	return redirect(url_for("login"))
 
+"""Receive new request from listening thread and update requests list"""
 @app.route("/new_request", methods=["POST"])
 def new_request():
 	data = request.json
@@ -111,9 +113,13 @@ def new_request():
 	product = data["product"]
 	quantity = data["quantity"]
 	with node.lock:
-		node.requests.append({"requester_node": requester_node, "product": product, "quantity": quantity})
+		node.requests.append({'requester_node': requester_node, 'product': product, 'quantity': quantity})
 		print(f"New request added to node{id(node)} request list {id(node.requests)}: Requester: {requester_node}, Product: {product}, Quantity; {quantity}")
 	return jsonify({"message": "Request added successfully"}), 200
+
+#@app.route("/add_product", methods=["POST"])
+#def add_product():
+	
 
 @app.route("/buy", methods=["POST"])
 def buy_item():

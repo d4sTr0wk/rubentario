@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>{{ node_id }} Management</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> <!-- jQuery -->
+	<script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script> <!-- socketio -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles/style.css') }}">
+</head>
+<body>
+	<!-- Sidebar -->
+	<aside class="sidebar">
+		<h3>{{ node_id }}'s Inventory</h3>
+		<ul>
+			<li><a href="/" class="active">Inicio</a></li>
+		</ul>
+	<h3>Welcome, {{ username }}</h3>
+	<a href="/logout">Logout</a>
+	<h1>Warehouse {{ node_id }} Inventory</h1>
+    <ul id="inventory-list">
+        <!-- List of inventory items will be shown here -->
+    </ul>
+
+    <h2>Requests</h2>
+    <ul id="requests-list">
+        <!-- Requests will be shown here -->
+    </ul>
+
+    <h2>Actions</h2>
+    <!-- Form to buy product -->
+    <form id="buy-form">
+		<label for="seller-buy">Seller:</label>
+		<input type="text" id="seller-buy" name="seller">
+        <label for="product-buy">Product:</label>
+        <input type="text" id="product-buy" name="product">
+        <label for="quantity-buy">Quantity:</label>
+        <input type="number" id="quantity-buy" name="quantity">
+        <button type="submit">Buy</button>
+    </form>
+
+    <!-- Form to sell product -->
+    <form id="sell-form">
+		<label for="client-sell">Client:</label>
+		<input type="text" id="client-sell" name="client">
+        <label for="product-sell">Product:</label>
+        <input type="text" id="product-sell" name="product">
+        <label for="quantity-sell">Quantity:</label>
+        <input type="number" id="quantity-sell" name="quantity">
+        <button type="submit">Sell</button>
+    </form>
+
+    <!-- Form to send a manual notification -->
+    <h2>Send Request</h2>
+    <form id="send-request-form">
+		<label for="node-id-request">Node ID:</label>
+		<input type="text" id="node-id-request" name="node">
+        <label for="product-request">Product:</label>
+        <input type="text" id="product-request" name="product">
+		<label for="quantity-request">Quantity:</label>
+		<input type="number" id="quantity-request" name="quantity">
+        <button type="submit">Send</button>
+    </form>
+
+	<script src="../static/scripts/main.js"></script>
+</body>
+</html>
