@@ -32,5 +32,6 @@ done
 
 echo "Starting node $NODE_ID on port $PORT with queues $REQUESTS_QUEUE"
 
+echo "Running Rubentario server . . ."
 # Run the Python node script with dynamic parameters
 python3 srcs/node.py --id "$NODE_ID" --requests_queue "$REQUESTS_QUEUE" --port "$PORT"

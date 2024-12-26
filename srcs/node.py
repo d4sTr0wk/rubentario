@@ -7,7 +7,20 @@ import argparse
 import signal
 import sys
 import requests
+import psycopg2
+from datetime import datetime
 
+# Database connection
+conn = psycopg2.connect(
+    dbname = "warehouse",
+    user = "rubentario",
+    password = "rubentario",
+    host="localhost",
+    port="5432"
+)
+
+cursor = conn.cursor()
+    
 app = Flask(__name__)
 app.secret_key = "vc0910$$"
 
@@ -25,26 +38,49 @@ class Node:
 		# Requests received from other nodes
 		node.requests_queue = requests_queue
 		try:
-			node.publish_connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
-			node.consume_connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+			node.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(node.url))
+			node.consume_connection = pika.BlockingConnection(pika.ConnectionParameters(node.url))
 		except pika.exceptions.AMQPConnectionError as e:
 			print(f"Error connecting to RabbitMQ: {e}")
 			raise e
-	
+
 		# Consume channel for listening to requests from other nodes
 		node.consume_channel = node.consume_connection.channel()
-		node.consume_channel.queue_declare(queue=node.requests_queue)
+		node.consume_channel.queue_declare(queue=node.requests_queue, durable=True)
 
 		# Publish channel for sending requests and responses to other nodes
 		node.publish_channel = node.publish_connection.channel()
 
-		# Local inventory for the node
-		node.inventory = {}
-
 		# Notifications for incoming requests
 		node.requests = []
 
-	def handleRequest(self, ch, method, properties, body):
+		# Products
+		node.products = [{"id": "1", "name": "Producto A"}]
+		# Create products table
+		cursor.execute('''
+			CREATE TABLE IF NOT EXISTS products (
+				id VARCHAR(255) PRIMARY KEY,
+				name VARCHAR(50) NOT NULL,
+				description TEXT,
+				unit_price FLOAT,
+				weight FLOAT,
+				expiration_date DATE
+			);
+		''')
+
+		# Local inventory for the node
+		node.inventory = {}
+		cursor.execute('''
+			CREATE TABLE IF NOT EXISTS inventory (
+				product_id VARCHAR (255) PRIMARY KEY,
+				stock INTEGER NOT NULL,
+				CONSTRAINT fk_product_id FOREIGN KEY (product_id) REFERENCES products(id)
+			);
+		''')
+
+		conn.commit()
+
+	def handle_request(self, ch, method, properties, body):
 		"""Handle a request received in the request queue and send data to main server thread."""
 		# Send data to main server
 		try:
@@ -57,26 +93,26 @@ class Node:
 		except Exception as e:
 			print(f"Error: {e}")
 
-	def sendRequest(self, destination_node, product, quantity):
-		# Send a request to another node
-		message = {"requester_node": node.id, "product": product, "quantity": quantity}
+	def send_request(self, destination_node, product, stock):
+		message = {"requester_node": node.id, "product": product, "stock": stock}
 		try:
-			self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message))
+			self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message)) 
+		except pika.exceptions.AMQPChannelError as e:
+			print(f"Error in publish_channel tonto: {e}")
 		except Exception as e:
 			print(f"Error sending request to {destination_node}: ({e})")
 
-	def startListening(self):
+	def start_listening(self):
 		# Start listening on the requests queue
-		self.consume_channel.basic_consume(queue=self.requests_queue, on_message_callback=self.handleRequest, auto_ack=True)
+		self.consume_channel.basic_consume(queue=self.requests_queue, on_message_callback=self.handle_request, auto_ack=True)
 		self.consume_channel.start_consuming()
 
-	def stopListening(self):
+	def stop_listening(self):
 		# Stop listening safely
 		if self.consume_connection and self.consume_connection.is_open:
 			self.consume_connection.close()
 		if self.publish_connection and self.publish_connection.is_open:
 			self.publish_connection.close()
-		sys.exit(0)
 
 # --- Flask Routes ---
 @app.route("/")
@@ -111,15 +147,11 @@ def new_request():
 	data = request.json
 	requester_node = data["requester_node"]
 	product = data["product"]
-	quantity = data["quantity"]
+	stock = data["stock"]
 	with node.lock:
-		node.requests.append({'requester_node': requester_node, 'product': product, 'quantity': quantity})
-		print(f"New request added to node{id(node)} request list {id(node.requests)}: Requester: {requester_node}, Product: {product}, Quantity; {quantity}")
+		node.requests.append({'requester_node': requester_node, 'product': product, 'stock': stock})
+		print(f"New request added to node{id(node)} request list {id(node.requests)}: Requester: {requester_node}, Product: {product}, Quantity; {stock}")
 	return jsonify({"message": "Request added successfully"}), 200
-
-#@app.route("/add_product", methods=["POST"])
-#def add_product():
-	
 
 @app.route("/buy", methods=["POST"])
 def buy_item():
@@ -127,12 +159,14 @@ def buy_item():
 	data = request.json
 	seller = data["seller"]
 	product = data["product"]
-	quantity = int(data["quantity"])
+	stock = int(data["stock"])
+	if not any(dictionary.get('id') == product for dictionary in node.products):
+		return jsonify({"error": f"Product {product} not registered"}), 400
 	if product in node.inventory:
-		node.inventory[product] += quantity
+		node.inventory[product] += stock
 	else:
-		node.inventory[product] = quantity
-	return jsonify({"message": f"Added {quantity} units of {product} to inventory from {seller}"}), 200
+		node.inventory[product] = stock
+	return jsonify({"message": f"Added {stock} units of {product} to inventory from {seller}"}), 200
 
 @app.route("/sell", methods=["POST"])
 def sell_item():
@@ -140,10 +174,10 @@ def sell_item():
 	data = request.json
 	client = data["client"]
 	product = data["product"]
-	quantity = int(data["quantity"])
-	if product in node.inventory and node.inventory[product] >= quantity:
-		node.inventory[product] -= quantity
-		return jsonify({"message": f"Sold {quantity} units of {product} to {client}"}), 200
+	stock = int(data["stock"])
+	if product in node.inventory and node.inventory[product] >= stock:
+		node.inventory[product] -= stock
+		return jsonify({"message": f"Sold {stock} units of {product} to {client}"}), 200
 	else:
 		return jsonify({"error": f"Not enough stock for {product}"}), 400
 
@@ -161,6 +195,7 @@ def show_requests():
 		print(f"Current requests in node{id(node)}: {node.requests}")
 		return jsonify(node.requests), 200
 
+
 @app.route("/send_request", methods=["POST"])
 def send_request():
 	# Send a request to another node
@@ -168,26 +203,49 @@ def send_request():
 		data = request.json
 		destination_node = data["destination_node"] + "_requests"
 		product = data["product"]
-		quantity = int(data["quantity"])
-		print(f"Sending request to {destination_node} for {product} ({quantity} units)")
-		node.sendRequest(destination_node=destination_node, product=product, quantity=quantity)
-		return jsonify({"message": f"Request for {product} sent to {destination_node} ({quantity} units)"}), 200
+		stock = int(data["stock"])
+		print(f"Sending request to {destination_node} for {product} ({stock} units)")
+		node.send_request(destination_node=destination_node, product=product, stock=stock)
+		return jsonify({"message": f"Request for {product} sent to {destination_node} ({stock} units)"}), 200
 	except KeyError as e:
 		return jsonify({"error": f"Missing key in request data ({e})"}), 400
 	except ValueError as e:
-		return jsonify({"error": f"Invalid quantity ({e})"}), 400
+		return jsonify({"error": f"Invalid stock ({e})"}), 400
 	except Exception as e:
 		return jsonify({"error": f"Internal unexpected server error ({str(e)})"}), 500
+
+@app.route("/products", methods=["GET"])
+def get_products():
+	return jsonify(node.products), 200
+
+@app.route("/add_product", methods=["POST"])
+def add_product():
+	data = request.json
+	product_id = data["product_id"]
+	name = data["name"]
+	description = data["description"]
+	unit_price = float(data["unit_price"])
+	weight = float(data["weight"])
+	expiration_date = datetime.strptime(data["expiration_date"], '%Y-%m-%d')
+
+	cursor.execute("INSERT INTO products (id, name, description, unit_price, weight, expiration_date) VALUES (%s, %s, %s, %s, %s, %s);", (product_id, name, description, unit_price, weight, expiration_date))
+	conn.commit()
+	return jsonify({"message": f"New product ({name}) added"}), 200
 
 @app.route("/stop", methods=["POST"])
 def stop():
 	# Stop the node
-	node.stopListening()
+	node.stop_listening()
+	cursor.close()
+	conn.close()
 	return jsonify({"message": "Node stopped"}), 200
 
 def signalHandler(sig, frame):
 	print("Bye bye!")
-	node.stopListening()
+	node.stop_listening()
+	cursor.close()
+	conn.close()
+	sys.exit(0)
 
 # Assign singal SIGNIT (Ctrl + ^C) to the function
 signal.signal(signal.SIGINT, signalHandler)
@@ -204,6 +262,6 @@ if __name__ == "__main__":
 	print(f"Node initialized with ID: {id(node)}, requests queue ID: {id(node.requests)}, PORT: {node.port}")
 
 	# Start listening in a thread
-	listening_thread = threading.Thread(target=node.startListening, daemon=True).start()
+	listening_thread = threading.Thread(target=node.start_listening, daemon=True).start()
 
 	app.run(debug=True, host="0.0.0.0", port=args.port)
