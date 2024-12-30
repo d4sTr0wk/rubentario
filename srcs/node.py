@@ -31,32 +31,32 @@ users = {
 }
 
 class Node:
-	def __init__(node, id, requests_queue, url, port):
-		node.lock = Lock()
-		node.id = id
-		node.url = url
-		node.port = port
-		# Requests received from other nodes
-		node.requests_queue = requests_queue
+	def __init__(self, id, requests_queue, url, port):
+		self.lock = Lock()
+		self.id = id
+		self.url = url
+		self.port = port
+		# Requests received from other selfs
+		self.requests_queue = requests_queue
 		try:
-			node.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(node.url))
-			node.consume_connection = pika.BlockingConnection(pika.ConnectionParameters(node.url))
+			self.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
+			self.consume_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
 		except pika.exceptions.AMQPConnectionError as e:
 			print(f"Error connecting to RabbitMQ: {e}")
 			raise e
 
-		# Consume channel for listening to requests from other nodes
-		node.consume_channel = node.consume_connection.channel()
-		node.consume_channel.queue_declare(queue=node.requests_queue, durable=True)
+		# Consume channel for listening to requests from other selfs
+		self.consume_channel = self.consume_connection.channel()
+		self.consume_channel.queue_declare(queue=self.requests_queue, durable=True)
 
-		# Publish channel for sending requests and responses to other nodes
-		node.publish_channel = node.publish_connection.channel()
+		# Publish channel for sending requests and responses to other selfs
+		self.publish_channel = self.publish_connection.channel()
 
 		# Notifications for incoming requests
-		node.requests = []
+		self.requests = []
 
 		# Products
-		node.products = [{"id": "1", "name": "Producto A"}]
+		self.products = [{"id": "1", "name": "Producto A"}]
 		# Create products table
 		cursor.execute('''
 			CREATE TABLE IF NOT EXISTS products (
@@ -69,8 +69,8 @@ class Node:
 			);
 		''')
 
-		# Local inventory for the node
-		node.inventory = {}
+		# Local inventory for the self
+		self.inventory = {}
 		cursor.execute('''
 			CREATE TABLE IF NOT EXISTS inventory (
 				product_id VARCHAR (255) PRIMARY KEY,
@@ -99,7 +99,7 @@ class Node:
 		try:
 			self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message)) 
 		except pika.exceptions.AMQPChannelError as e:
-			print(f"Error in publish_channel tonto: {e}")
+			print(f"Error in publish_channel: {e}")
 		except Exception as e:
 			print(f"Error sending request to {destination_node}: ({e})")
 
@@ -146,21 +146,43 @@ def logout():
 @app.route("/new_request", methods=["POST"])
 def new_request():
 	data = request.json
+	if data is None:
+		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
+	# JSON data exctraction
 	requester_node = data["requester_node"]
 	product = data["product"]
 	stock = data["stock"]
+
+	# Validate all fields
+	if not all([requester_node, product, stock]):
+		return jsonify({"error": "Missing required fields"}), 400
+
 	with node.lock:
-		node.requests.append({'requester_node': requester_node, 'product': product, 'stock': stock})
+		node.requests.append({
+			'requester_node': requester_node,
+			'product': product,
+			'stock': stock
+		})
 		print(f"New request added to node{id(node)} request list {id(node.requests)}: Requester: {requester_node}, Product: {product}, Quantity; {stock}")
+
 	return jsonify({"message": "Request added successfully"}), 200
 
 @app.route("/buy", methods=["POST"])
 def buy_item():
 	# Buy an item for the inventory
 	data = request.json
+	if data is None:
+		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
 	seller = data["seller"]
 	product = data["product"]
 	stock = int(data["stock"])
+
+	# Validate all fields
+	if not all ([seller, product, stock]):
+		return jsonify({"error": "Missing required fields"}), 400
+
 	if not any(dictionary.get('id') == product for dictionary in node.products):
 		return jsonify({"error": f"Product {product} not registered"}), 400
 	if product in node.inventory:
@@ -173,9 +195,17 @@ def buy_item():
 def sell_item():
 	# Sell an item from the inventory
 	data = request.json
+	if data is None:
+		return jsonify({"error": "Invaild JSON or no JSON provided"}), 400
+
 	client = data["client"]
 	product = data["product"]
 	stock = int(data["stock"])
+
+	# Validate all fields
+	if not all ([client, product, stock]):
+		return jsonify({"error": "Missing required fields"}), 400
+
 	if product in node.inventory and node.inventory[product] >= stock:
 		node.inventory[product] -= stock
 		return jsonify({"message": f"Sold {stock} units of {product} to {client}"}), 200
@@ -202,9 +232,16 @@ def send_request():
 	# Send a request to another node
 	try:
 		data = request.json
+		if data is None:
+			return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
 		destination_node = data["destination_node"] + "_requests"
 		product = data["product"]
 		stock = int(data["stock"])
+
+		if not all ([destination_node, product, stock]):
+			return jsonify({"error": "Missing required fields"}), 400
+
 		print(f"Sending request to {destination_node} for {product} ({stock} units)")
 		node.send_request(destination_node=destination_node, product=product, stock=stock)
 		return jsonify({"message": f"Request for {product} sent to {destination_node} ({stock} units)"}), 200
@@ -222,12 +259,19 @@ def get_products():
 @app.route("/add_product", methods=["POST"])
 def add_product():
 	data = request.json
+	if data is None:
+		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
 	product_id = data["product_id"]
 	name = data["name"]
 	description = data["description"]
 	unit_price = float(data["unit_price"])
 	weight = float(data["weight"])
 	expiration_date = datetime.strptime(data["expiration_date"], '%Y-%m-%d')
+
+	if not all([product_id, name, description, unit_price, weight, expiration_date]):
+		return jsonify({"error": "Missing required fields"}), 400
+
 	try:
 		cursor.execute("INSERT INTO products (id, name, description, unit_price, weight, expiration_date) VALUES (%s, %s, %s, %s, %s, %s);", (product_id, name, description, unit_price, weight, expiration_date))
 		conn.commit()

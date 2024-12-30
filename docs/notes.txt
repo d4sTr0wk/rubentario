@@ -4,3 +4,5 @@ Base de datos:
     · 3 Bases de datos: transferencias entre almacenes, entradas (compras) y salidas (ventas).
     · Las transacciones tienen: fecha, ID de transferencia, ID de objeto, cantidad, origen y destino (strings).
     · Arquitectura híbrida de RabbitMQ y gRPC.
+
+30/12/24 [máximo}: send_request imprime en el log del servidor los posibles errores en la transmisión del request a través de RabbitMQ pero no lo reporta al usuario en la web.
