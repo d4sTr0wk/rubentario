@@ -8,6 +8,7 @@ import signal
 import sys
 import requests
 import psycopg2
+from psycopg2 import errors
 from datetime import datetime
 
 # Database connection
@@ -227,10 +228,16 @@ def add_product():
 	unit_price = float(data["unit_price"])
 	weight = float(data["weight"])
 	expiration_date = datetime.strptime(data["expiration_date"], '%Y-%m-%d')
-
-	cursor.execute("INSERT INTO products (id, name, description, unit_price, weight, expiration_date) VALUES (%s, %s, %s, %s, %s, %s);", (product_id, name, description, unit_price, weight, expiration_date))
-	conn.commit()
-	return jsonify({"message": f"New product ({name}) added"}), 200
+	try:
+		cursor.execute("INSERT INTO products (id, name, description, unit_price, weight, expiration_date) VALUES (%s, %s, %s, %s, %s, %s);", (product_id, name, description, unit_price, weight, expiration_date))
+		conn.commit()
+		return jsonify({"message": f"New product ({name}) added"}), 200
+	except errors.UniqueViolation:
+		conn.rollback()
+		return jsonify({"error": f"ID {product_id} product already exists!"}), 409
+	except Exception as e:
+		conn.rollback()
+		return jsonify({"error": f"Intern unexpected server error: {e}"}), 500
 
 @app.route("/stop", methods=["POST"])
 def stop():
