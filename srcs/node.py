@@ -296,6 +296,10 @@ def delete_product():
 	try:
 		cursor.execute("DELETE FROM products WHERE id = %s;", (product_id,))
 		db_conn.commit()
+
+		if cursor.rowcount == 0:
+			return jsonify({"error": f"No product found with id {product_id}"}), 404
+
 		return jsonify({"message": f"Product {product_id} deleted"}), 200
 	except Exception as e:
 		db_conn.rollback()
