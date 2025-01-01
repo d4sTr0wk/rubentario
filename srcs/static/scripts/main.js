@@ -1,6 +1,6 @@
 // Function to fetch and update the inventory
 function updateInventory() {
-    $.get("/show_inventory", function (data) {
+    $.get("/get_inventory", function (data) {
         var inventoryList = '';
         for (var product in data) {
             inventoryList += "<li>".concat(product, ": ").concat(data[product], " units</li>");
@@ -10,7 +10,7 @@ function updateInventory() {
 }
 // Function update requests list
 function updateRequests() {
-    $.get("/show_requests", function (data) {
+    $.get("/get_requests", function (data) {
         var requestList = '';
         data.forEach(function (item) {
             requestList += "<li>Requester Node: ".concat(item.requester_node, ", Product: ").concat(item.product, ", Quantity: ").concat(item.stock, "</li>");
@@ -68,13 +68,13 @@ $('#delete-product-form').on('submit', function (e) {
 $('#buy-form').on('submit', function (e) {
     e.preventDefault();
     var seller = $('#seller-buy').val();
-    var product = $('#product-buy').val();
+    var product_id = $('#product-id-buy').val();
     var stock = parseInt($('#stock-buy').val());
     $.ajax({
         url: '/buy',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({ seller: seller, product: product, stock: stock }),
+        data: JSON.stringify({ seller: seller, product_id: product_id, stock: stock }),
         success: function (response) {
             alert(response.message);
             updateInventory(); // Update inventory after buying
@@ -88,13 +88,13 @@ $('#buy-form').on('submit', function (e) {
 $('#sell-form').on('submit', function (e) {
     e.preventDefault();
     var client = $('#client-sell').val();
-    var product = $('#product-sell').val();
+    var product_id = $('#product-id-sell').val();
     var stock = parseInt($('#stock-sell').val());
     $.ajax({
         url: '/sell',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({ client: client, product: product, stock: stock }),
+        data: JSON.stringify({ client: client, product_id: product_id, stock: stock }),
         success: function (response) {
             alert(response.message);
             updateInventory(); // Update inventory after selling

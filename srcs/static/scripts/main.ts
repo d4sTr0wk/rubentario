@@ -17,7 +17,7 @@ interface Product {
 
 // Function to fetch and update the inventory
 function updateInventory(): void {
-  $.get("/show_inventory", function (data: { [key: string]: number }) {
+  $.get("/get_inventory", function (data: { [key: string]: number }) {
     let inventoryList = '';
     for (let product in data) {
       inventoryList += `<li>${product}: ${data[product]} units</li>`;
@@ -28,7 +28,7 @@ function updateInventory(): void {
 
 // Function update requests list
 function updateRequests(): void {
-  $.get("/show_requests", function (data: ProductRequest[]) {
+  $.get("/get_requests", function (data: ProductRequest[]) {
     let requestList = '';
     data.forEach(function (item) {
       requestList += `<li>Requester Node: ${item.requester_node}, Product: ${item.product}, Quantity: ${item.stock}</li>`;
@@ -93,14 +93,14 @@ $('#delete-product-form').on('submit', function (e: JQuery.SubmitEvent) {
 $('#buy-form').on('submit', function (e: JQuery.SubmitEvent) {
   e.preventDefault();
   const seller = $('#seller-buy').val() as string;
-  const product = $('#product-buy').val() as string;
+  const product_id = $('#product-id-buy').val() as string;
   const stock = parseInt($('#stock-buy').val() as string);
 
   $.ajax({
     url: '/buy',
     method: 'POST',
     contentType: 'application/json',
-    data: JSON.stringify({ seller, product, stock }),
+    data: JSON.stringify({ seller, product_id, stock }),
     success: function (response: { message: string }) {
       alert(response.message);
       updateInventory();  // Update inventory after buying
@@ -115,14 +115,14 @@ $('#buy-form').on('submit', function (e: JQuery.SubmitEvent) {
 $('#sell-form').on('submit', function (e: JQuery.SubmitEvent) {
   e.preventDefault();
   const client = $('#client-sell').val() as string;
-  const product = $('#product-sell').val() as string;
+  const product_id = $('#product-id-sell').val() as string;
   const stock = parseInt($('#stock-sell').val() as string);
 
   $.ajax({
     url: '/sell',
     method: 'POST',
     contentType: 'application/json',
-    data: JSON.stringify({ client, product, stock }),
+    data: JSON.stringify({ client, product_id, stock }),
     success: function (response: { message: string }) {
       alert(response.message);
       updateInventory();  // Update inventory after selling

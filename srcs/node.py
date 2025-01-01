@@ -70,7 +70,6 @@ class Node:
 		''')
 
 		# Local inventory for the self
-		self.inventory = {}
 		cursor.execute('''
 			CREATE TABLE IF NOT EXISTS inventory (
 				product_id VARCHAR (255) PRIMARY KEY,
@@ -78,6 +77,10 @@ class Node:
 				CONSTRAINT fk_product_id FOREIGN KEY (product_id) REFERENCES products(id)
 			);
 		''')
+		self.inventory_cache = {}
+		cursor.execute("SELECT * FROM inventory")
+		rows = cursor.fetchall()
+		self.inventory_cache.update({str(row[0]): row[1] for row in rows})
 
 		db_conn.commit()
 
@@ -121,7 +124,7 @@ def index():
 	# Home page: Show inventory and requests
 	if "username" not in session:
 		return redirect(url_for("login"))
-	return render_template("index.html", node_id = node.id, inventory=node.inventory, requests=node.requests, username=session["username"])
+	return render_template("index.html", node_id = node.id, inventory=node.inventory_cache, requests=node.requests, username=session["username"])
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -176,20 +179,40 @@ def buy_item():
 		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
 
 	seller = data["seller"]
-	product = data["product"]
+	product_id = data["product_id"]
 	stock = int(data["stock"])
 
 	# Validate all fields
-	if not all ([seller, product, stock]):
+	if not all ([seller, product_id, stock]):
 		return jsonify({"error": "Missing required fields"}), 400
 
-	if not any(dictionary.get('id') == product for dictionary in node.products):
-		return jsonify({"error": f"Product {product} not registered"}), 400
-	if product in node.inventory:
-		node.inventory[product] += stock
-	else:
-		node.inventory[product] = stock
-	return jsonify({"message": f"Added {stock} units of {product} to inventory from {seller}"}), 200
+	try:
+		cursor.execute("SELECT * FROM products WHERE id = %s;", (product_id,))
+
+		if cursor.rowcount == 0:
+			return jsonify({"error": f"No product found with id {product_id}"}), 404
+
+		cursor.execute("SELECT * FROM inventory WHERE product_id = %s;", (product_id,))
+
+		if cursor.rowcount == 0:
+			cursor.execute("INSERT INTO inventory VALUES (%s, %s);", (product_id, stock))
+		else:
+			cursor.execute("UPDATE inventory SET stock = stock + %s WHERE product_id = %s;", (stock, product_id))
+		db_conn.commit()
+
+		with node.lock:
+			if str(product_id) in node.inventory_cache:
+				node.inventory_cache[str(product_id)] += stock
+			else:
+				cursor.execute("SELECT stock FROM inventory WHERE product_id = %s;", (product_id,))
+				result = cursor.fetchone()
+				if result:
+					node.inventory_cache[str(product_id)] = result[0] + stock
+
+		return jsonify({"message": f"Added {stock} units of {product_id} to inventory from {seller}"}), 200
+	except Exception as e:
+		db_conn.rollback()
+		return jsonify({"error": f"Intern unexpected server error buying: {e}"}), 500
 
 @app.route("/sell", methods=["POST"])
 def sell_item():
@@ -199,25 +222,59 @@ def sell_item():
 		return jsonify({"error": "Invaild JSON or no JSON provided"}), 400
 
 	client = data["client"]
-	product = data["product"]
+	product_id = data["product_id"]
 	stock = int(data["stock"])
 
 	# Validate all fields
-	if not all ([client, product, stock]):
+	if not all ([client, product_id, stock]):
 		return jsonify({"error": "Missing required fields"}), 400
 
-	if product in node.inventory and node.inventory[product] >= stock:
-		node.inventory[product] -= stock
-		return jsonify({"message": f"Sold {stock} units of {product} to {client}"}), 200
-	else:
-		return jsonify({"error": f"Not enough stock for {product}"}), 400
+	try:
+		cursor.execute("SELECT * FROM products WHERE id = %s;", (product_id,))
 
-@app.route("/show_inventory", methods=["GET"])
-def show_inventory():
+		if cursor.rowcount == 0:
+			return jsonify({"error": f"No product found with id {product_id}"}), 404
+
+		if cursor.rowcount > 1:
+			return jsonify({"error": f"Internal critical unexpected error: multiple products with same ID {product_id}"}), 500
+
+		cursor.execute("SELECT stock FROM inventory WHERE product_id = %s;", (product_id,))
+		result = cursor.fetchone()
+
+		if result:
+			product_stock = result[0]
+			if stock > product_stock:
+				db_conn.rollback()
+				return jsonify({"error": f"Not enough stock for {product_id}"}), 400
+			elif stock == product_stock:
+				cursor.execute("DELETE FROM inventory WHERE product_id = %s;", (product_id,))
+			else:
+				cursor.execute("UPDATE inventory SET stock = stock - %s WHERE product_id = %s;", (stock, product_id))
+		
+			db_conn.commit()
+
+			with node.lock:
+				if str(product_id) in node.inventory_cache:
+					node.inventory_cache[str(product_id)] -= stock
+					if node.inventory_cache[str(product_id)] <= 0:
+						del node.inventory_cache[str(product_id)]
+				else:
+					pass
+
+			return jsonify({"message": f"Sold {stock} units of {product_id} to inventory to {client}"}), 200
+		else:
+			db_conn.rollback()
+			return jsonify({"error": f"Unexpected product {product_id} not found in inventory table"}), 404
+
+	except Exception as e:
+		db_conn.rollback()
+		return jsonify({"error": f"Intern unexpected server error selling: {e}"}), 500
+
+@app.route("/get_inventory", methods=["GET"])
+def get_inventory():
 	# Show the current inventory in the warehouse
-	# Mostrar el inventario en formato JSON
-	with node.lock:
-		return jsonify(node.inventory), 200
+	print(node.inventory_cache)
+	return jsonify(node.inventory_cache), 200
 
 @app.route("/show_requests", methods=["GET"])
 def show_requests():
@@ -252,7 +309,7 @@ def send_request():
 	except Exception as e:
 		return jsonify({"error": f"Internal unexpected server error ({str(e)})"}), 500
 
-@app.route("/products", methods=["GET"])
+@app.route("/get_products", methods=["GET"])
 def get_products():
 	return jsonify(node.products), 200
 
@@ -313,7 +370,7 @@ def stop():
 	db_conn.close()
 	return jsonify({"message": "Node stopped"}), 200
 
-def signalHandler(sig, frame):
+def signalHandler(sig, _):
 	print("Bye bye!")
 	node.stop_listening()
 	cursor.close()
@@ -322,6 +379,7 @@ def signalHandler(sig, frame):
 
 # Assign singal SIGNIT (Ctrl + ^C) to the function
 signal.signal(signal.SIGINT, signalHandler)
+signal.signal(signal.SIGTERM, signalHandler)
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
