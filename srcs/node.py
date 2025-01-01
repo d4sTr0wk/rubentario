@@ -108,15 +108,23 @@ class Node:
 
 	def start_listening(self):
 		# Start listening on the requests queue
-		self.consume_channel.basic_consume(queue=self.requests_queue, on_message_callback=self.handle_request, auto_ack=True)
-		self.consume_channel.start_consuming()
+		try:
+			self.consume_channel.basic_consume(queue=self.requests_queue, on_message_callback=self.handle_request, auto_ack=True)
+			self.consume_channel.start_consuming()
+		except Exception as e:
+			print(f"Error with consuming thread: {e}")
+		finally:
+			print("Consuming thread terminated")
 
 	def stop_listening(self):
 		# Stop listening safely
-		if self.consume_connection and self.consume_connection.is_open:
-			self.consume_connection.close()
-		if self.publish_connection and self.publish_connection.is_open:
-			self.publish_connection.close()
+		try:
+			if self.consume_channel and not self.consume_channel.is_closed:
+				self.consume_channel.close()
+			if self.consume_connection and not self.consume_connection.is_closed:
+				self.consume_connection.close()
+		except Exception as e:
+			print(f"Error closing RabbitMQ connections: {e}")
 
 # --- Flask Routes ---
 @app.route("/")
@@ -365,17 +373,30 @@ def delete_product():
 @app.route("/stop", methods=["POST"])
 def stop():
 	# Stop the node
-	node.stop_listening()
-	cursor.close()
-	db_conn.close()
+	try:
+		node.stop_listening()
+		if listening_thread and listening_thread.is_alive():
+			listening_thread.join()
+		cursor.close()
+		db_conn.close()
+	except Exception as e:
+		print(f"Error closing features: {e}")
+	finally:
+		print("Bye bye!")
 	return jsonify({"message": "Node stopped"}), 200
 
 def signalHandler(sig, _):
 	print("Bye bye!")
-	node.stop_listening()
-	cursor.close()
-	db_conn.close()
-	sys.exit(0)
+	try:
+		node.stop_listening()
+		if listening_thread and listening_thread.is_alive():
+			listening_thread.join()
+	except Exception as e:
+		print(f"Error closing features: {e}")
+	finally:
+		cursor.close()
+		db_conn.close()
+		sys.exit(0)
 
 # Assign singal SIGNIT (Ctrl + ^C) to the function
 signal.signal(signal.SIGINT, signalHandler)
@@ -395,4 +416,4 @@ if __name__ == "__main__":
 	# Start listening in a thread
 	listening_thread = threading.Thread(target=node.start_listening, daemon=True).start()
 
-	app.run(debug=True, host="0.0.0.0", port=args.port)
+	app.run(debug=False, host="0.0.0.0", port=args.port, use_reloader=False)
