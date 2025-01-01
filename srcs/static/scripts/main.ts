@@ -71,6 +71,24 @@ $('#add-product-form').on('submit', function (e: JQuery.SubmitEvent) {
   });
 });
 
+$('#delete-product-form').on('submit', function (e: JQuery.SubmitEvent) {
+	e.preventDefault();
+	const product_id = $('#delete-product-id').val() as string;
+
+	$.ajax({
+		url: '/delete_product',
+		method: 'POST',
+		contentType: 'application/json',
+		data: JSON.stringify({ product_id }),
+		success: function (response: { message: string}) {
+			alert(response.message);
+		},
+		error: function (response: JQuery.jqXHR) {
+			alert(response.responseJSON.error);
+		}
+	});
+});
+
 // Handle buying a product
 $('#buy-form').on('submit', function (e: JQuery.SubmitEvent) {
   e.preventDefault();

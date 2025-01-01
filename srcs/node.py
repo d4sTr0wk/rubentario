@@ -12,7 +12,7 @@ from psycopg2 import errors
 from datetime import datetime
 
 # Database connection
-conn = psycopg2.connect(
+db_conn = psycopg2.connect(
     dbname = "warehouse",
     user = "rubentario",
     password = "rubentario",
@@ -20,7 +20,7 @@ conn = psycopg2.connect(
     port="5432"
 )
 
-cursor = conn.cursor()
+cursor = db_conn.cursor()
     
 app = Flask(__name__)
 app.secret_key = "vc0910$$"
@@ -79,7 +79,7 @@ class Node:
 			);
 		''')
 
-		conn.commit()
+		db_conn.commit()
 
 	def handle_request(self, ch, method, properties, body):
 		"""Handle a request received in the request queue and send data to main server thread."""
@@ -274,28 +274,46 @@ def add_product():
 
 	try:
 		cursor.execute("INSERT INTO products (id, name, description, unit_price, weight, expiration_date) VALUES (%s, %s, %s, %s, %s, %s);", (product_id, name, description, unit_price, weight, expiration_date))
-		conn.commit()
+		db_conn.commit()
 		return jsonify({"message": f"New product ({name}) added"}), 200
 	except errors.UniqueViolation:
-		conn.rollback()
+		db_conn.rollback()
 		return jsonify({"error": f"ID {product_id} product already exists!"}), 409
 	except Exception as e:
-		conn.rollback()
-		return jsonify({"error": f"Intern unexpected server error: {e}"}), 500
+		db_conn.rollback()
+		return jsonify({"error": f"Intern unexpected server error adding: {e}"}), 500
+
+@app.route("/delete_product", methods=["POST"])
+def delete_product():
+	data = request.json
+	if data is None:
+		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
+	product_id = data["product_id"]
+	if not product_id:
+		return jsonify({"error": "Missing required field"}), 400
+
+	try:
+		cursor.execute("DELETE FROM products WHERE id = %s;", (product_id,))
+		db_conn.commit()
+		return jsonify({"message": f"Product {product_id} deleted"}), 200
+	except Exception as e:
+		db_conn.rollback()
+		return jsonify({"error": f"Intern unexpected server error deleting: {e}"}), 500
 
 @app.route("/stop", methods=["POST"])
 def stop():
 	# Stop the node
 	node.stop_listening()
 	cursor.close()
-	conn.close()
+	db_conn.close()
 	return jsonify({"message": "Node stopped"}), 200
 
 def signalHandler(sig, frame):
 	print("Bye bye!")
 	node.stop_listening()
 	cursor.close()
-	conn.close()
+	db_conn.close()
 	sys.exit(0)
 
 # Assign singal SIGNIT (Ctrl + ^C) to the function

@@ -48,6 +48,22 @@ $('#add-product-form').on('submit', function (e) {
         }
     });
 });
+$('#delete-product-form').on('submit', function (e) {
+    e.preventDefault();
+    var product_id = $('#delete-product-id').val();
+    $.ajax({
+        url: '/delete_product',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ product_id: product_id }),
+        success: function (response) {
+            alert(response.message);
+        },
+        error: function (response) {
+            alert(response.responseJSON.error);
+        }
+    });
+});
 // Handle buying a product
 $('#buy-form').on('submit', function (e) {
     e.preventDefault();
