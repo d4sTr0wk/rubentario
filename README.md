@@ -40,6 +40,8 @@ El sistema está basado en una arquitectura distribuida con los siguientes compo
 
 ✅ Sincronización Global: Cambios reflejados en todos los nodos.
 
+✅ Mecanismo de ping (heartbeat con RabbitMQ) para tolerar nodos caídos en el sistema.
+
 ✅ Alertas de Reposición: Notificaciones para stock bajo.
 
 ✅ Historial de Movimientos: Registro detallado de entradas, salidas y transferencias.
