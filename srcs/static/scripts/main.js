@@ -3,7 +3,7 @@ function updateInventory() {
     $.get("/get_inventory", function (data) {
         var inventoryList = '';
         for (var product in data) {
-            inventoryList += "<li>".concat(product, ": ").concat(data[product], " units</li>");
+            inventoryList += "<li>Product ID: ".concat(product, " | Stock: ").concat(data[product], " units</li>");
         }
         $('#inventory-list').html(inventoryList);
     });
@@ -13,9 +13,18 @@ function updateRequests() {
     $.get("/get_requests", function (data) {
         var requestList = '';
         data.forEach(function (item) {
-            requestList += "<li>Requester Node: ".concat(item.requester_node, ", Product: ").concat(item.product, ", Quantity: ").concat(item.stock, "</li>");
+            requestList += "<li>Requester Node: ".concat(item.requester_node, " | Product: ").concat(item.product, " | Quantity: ").concat(item.stock, "</li>");
         });
         $('#requests-list').html(requestList);
+    });
+}
+function updateTransactions() {
+    $.get("/get_transactions", function (data) {
+        var transactionList = '';
+        data.forEach(function (item) {
+            transactionList += "<li>Sender: ".concat(item.sender, " | Receiver: ").concat(item.receiver, " | Product: ").concat(item.product_id, " | Stock: ").concat(item.stock, "</li>");
+        });
+        $('#transactions-list').html(transactionList);
     });
 }
 // Add product to database
@@ -24,9 +33,13 @@ $('#add-product-form').on('submit', function (e) {
     var product_id = $('#add-product-id').val();
     var name = $('#add-product-name').val();
     var description = $('#add-product-description').val();
+    //const description = description_input === '' ? null : description_input;
     var unit_price = parseFloat($('#add-product-unit-price').val());
+    //const unit_price = unit_price_input === '' ? null: parseFloat(unit_price_input);
     var weight = parseFloat($('#add-product-weight').val());
+    //const weight = weight_input === '' ? null : parseFloat(weight_input);
     var expiration_date = $('#add-product-expiration-date').val();
+    //const expiration_date = expiration_date_input === '' ? null : expiration_date_input;
     var productData = {
         product_id: product_id,
         name: name,
@@ -78,6 +91,7 @@ $('#buy-form').on('submit', function (e) {
         success: function (response) {
             alert(response.message);
             updateInventory(); // Update inventory after buying
+            updateTransactions();
         },
         error: function (response) {
             alert(response.responseJSON.error);
@@ -98,6 +112,7 @@ $('#sell-form').on('submit', function (e) {
         success: function (response) {
             alert(response.message);
             updateInventory(); // Update inventory after selling
+            updateTransactions();
         },
         error: function (response) {
             alert(response.responseJSON.error);
@@ -126,5 +141,6 @@ $('#send-request-form').on('submit', function (e) {
 // Initial call to update inventory and notifications (also in case web is refreshed)
 updateInventory();
 updateRequests();
+updateTransactions();
 // Interval of long polling to append new requests
 setInterval(updateRequests, 60000);

@@ -15,12 +15,20 @@ interface Product {
   expiration_date: string;
 }
 
+// Type definition for transaction
+interface Transaction {
+	sender: string;
+	receiver: string;
+	product_id: string;
+	stock: number;
+}
+
 // Function to fetch and update the inventory
 function updateInventory(): void {
   $.get("/get_inventory", function (data: { [key: string]: number }) {
     let inventoryList = '';
     for (let product in data) {
-      inventoryList += `<li>${product}: ${data[product]} units</li>`;
+      inventoryList += `<li>Product ID: ${product} | Stock: ${data[product]} units</li>`;
     }
     $('#inventory-list').html(inventoryList);
   });
@@ -31,11 +39,22 @@ function updateRequests(): void {
   $.get("/get_requests", function (data: ProductRequest[]) {
     let requestList = '';
     data.forEach(function (item) {
-      requestList += `<li>Requester Node: ${item.requester_node}, Product: ${item.product}, Quantity: ${item.stock}</li>`;
+      requestList += `<li>Requester Node: ${item.requester_node} | Product: ${item.product} | Quantity: ${item.stock}</li>`;
     });
 
     $('#requests-list').html(requestList);
   });
+}
+
+function updateTransactions(): void {
+	$.get("/get_transactions", function (data: Transaction[]) {
+		let transactionList = '';
+		data.forEach(function (item) {
+			transactionList += `<li>Sender: ${item.sender} | Receiver: ${item.receiver} | Product: ${item.product_id} | Stock: ${item.stock}</li>`
+		});
+
+		$('#transactions-list').html(transactionList);
+	});
 }
 
 // Add product to database
@@ -43,11 +62,19 @@ $('#add-product-form').on('submit', function (e: JQuery.SubmitEvent) {
   e.preventDefault();
   const product_id = $('#add-product-id').val() as string;
   const name = $('#add-product-name').val() as string;
+
   const description = $('#add-product-description').val() as string;
+  //const description = description_input === '' ? null : description_input;
+
   const unit_price = parseFloat($('#add-product-unit-price').val() as string);
+  //const unit_price = unit_price_input === '' ? null: parseFloat(unit_price_input);
+
   const weight = parseFloat($('#add-product-weight').val() as string);
+  //const weight = weight_input === '' ? null : parseFloat(weight_input);
+
   const expiration_date = $('#add-product-expiration-date').val() as string;
-  
+  //const expiration_date = expiration_date_input === '' ? null : expiration_date_input;
+
   const productData: Product = {
     product_id,
     name,
@@ -104,6 +131,7 @@ $('#buy-form').on('submit', function (e: JQuery.SubmitEvent) {
     success: function (response: { message: string }) {
       alert(response.message);
       updateInventory();  // Update inventory after buying
+	  updateTransactions();
     },
     error: function (response: JQuery.jqXHR) {
       alert(response.responseJSON.error);
@@ -126,6 +154,7 @@ $('#sell-form').on('submit', function (e: JQuery.SubmitEvent) {
     success: function (response: { message: string }) {
       alert(response.message);
       updateInventory();  // Update inventory after selling
+	  updateTransactions();
     },
     error: function (response: JQuery.jqXHR) {
       alert(response.responseJSON.error);
@@ -157,7 +186,7 @@ $('#send-request-form').on('submit', function (e: JQuery.SubmitEvent) {
 // Initial call to update inventory and notifications (also in case web is refreshed)
 updateInventory();
 updateRequests();
-
+updateTransactions();
 // Interval of long polling to append new requests
 setInterval(updateRequests, 60000);
 

@@ -11,6 +11,7 @@ import psycopg2
 from psycopg2 import errors
 from datetime import datetime
 
+
 # Database connection
 db_conn = psycopg2.connect(
     dbname = "warehouse",
@@ -25,10 +26,12 @@ cursor = db_conn.cursor()
 app = Flask(__name__)
 app.secret_key = "vc0910$$"
 
+
 #Predifined users
 users = {
-	"admin": "vc0910$$",
+	"admin": "admin",
 }
+
 
 class Node:
 	def __init__(self, id, requests_queue, url, port):
@@ -60,8 +63,8 @@ class Node:
 		# Create products table
 		cursor.execute('''
 			CREATE TABLE IF NOT EXISTS products (
-				id VARCHAR(255) PRIMARY KEY,
-				name VARCHAR(50) NOT NULL,
+				id VARCHAR(50) PRIMARY KEY,
+				name VARCHAR(150) NOT NULL,
 				description TEXT,
 				unit_price FLOAT,
 				weight FLOAT,
@@ -69,10 +72,10 @@ class Node:
 			);
 		''')
 
-		# Local inventory for the self
+		# Create inventory table and cached local inventory
 		cursor.execute('''
 			CREATE TABLE IF NOT EXISTS inventory (
-				product_id VARCHAR (255) PRIMARY KEY,
+				product_id VARCHAR (50) PRIMARY KEY,
 				stock INTEGER NOT NULL,
 				CONSTRAINT fk_product_id FOREIGN KEY (product_id) REFERENCES products(id)
 			);
@@ -82,7 +85,18 @@ class Node:
 		rows = cursor.fetchall()
 		self.inventory_cache.update({str(row[0]): row[1] for row in rows})
 
+		# Create transactions (history) table 
+		cursor.execute('''
+			CREATE TABLE IF NOT EXISTS transactions (
+				sender VARCHAR(100) NOT NULL,
+				receiver VARCHAR(100) NOT NULL,
+				product_id VARCHAR(50) NOT NULL,
+				stock INTEGER NOT NULL
+			);
+		''');
+
 		db_conn.commit()
+
 
 	def handle_request(self, ch, method, properties, body):
 		"""Handle a request received in the request queue and send data to main server thread."""
@@ -97,6 +111,7 @@ class Node:
 		except Exception as e:
 			print(f"Error: {e}")
 
+
 	def send_request(self, destination_node, product, stock):
 		message = {"requester_node": node.id, "product": product, "stock": stock}
 		try:
@@ -105,6 +120,7 @@ class Node:
 			print(f"Error in publish_channel: {e}")
 		except Exception as e:
 			print(f"Error sending request to {destination_node}: ({e})")
+
 
 	def start_listening(self):
 		# Start listening on the requests queue
@@ -116,6 +132,7 @@ class Node:
 		finally:
 			print("Consuming thread terminated")
 
+
 	def stop_listening(self):
 		# Stop listening safely
 		try:
@@ -126,13 +143,16 @@ class Node:
 		except Exception as e:
 			print(f"Error closing RabbitMQ connections: {e}")
 
+
 # --- Flask Routes ---
 @app.route("/")
 def index():
 	# Home page: Show inventory and requests
 	if "username" not in session:
 		return redirect(url_for("login"))
+
 	return render_template("index.html", node_id = node.id, inventory=node.inventory_cache, requests=node.requests, username=session["username"])
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -144,7 +164,9 @@ def login():
 			session["username"] = username
 			return redirect(url_for('index'))
 		return render_template('login.html', error='Invalid credentials')
+
 	return render_template('login.html', node_id=node.id)
+
 
 """Logout option"""
 @app.route("/logout")
@@ -152,6 +174,7 @@ def logout():
 	# Logout the user
 	session.pop("username", None)
 	return redirect(url_for("login"))
+
 
 """Receive new request from listening thread and update requests list"""
 @app.route("/new_request", methods=["POST"])
@@ -179,6 +202,7 @@ def new_request():
 
 	return jsonify({"message": "Request added successfully"}), 200
 
+
 @app.route("/buy", methods=["POST"])
 def buy_item():
 	# Buy an item for the inventory
@@ -196,16 +220,17 @@ def buy_item():
 
 	try:
 		cursor.execute("SELECT * FROM products WHERE id = %s;", (product_id,))
-
 		if cursor.rowcount == 0:
 			return jsonify({"error": f"No product found with id {product_id}"}), 404
 
 		cursor.execute("SELECT * FROM inventory WHERE product_id = %s;", (product_id,))
-
 		if cursor.rowcount == 0:
 			cursor.execute("INSERT INTO inventory VALUES (%s, %s);", (product_id, stock))
 		else:
 			cursor.execute("UPDATE inventory SET stock = stock + %s WHERE product_id = %s;", (stock, product_id))
+
+		cursor.execute("INSERT INTO transactions VALUES (%s, %s, %s, %s)", (seller, node.id, product_id, stock))
+
 		db_conn.commit()
 
 		with node.lock:
@@ -215,12 +240,13 @@ def buy_item():
 				cursor.execute("SELECT stock FROM inventory WHERE product_id = %s;", (product_id,))
 				result = cursor.fetchone()
 				if result:
-					node.inventory_cache[str(product_id)] = result[0] + stock
+					node.inventory_cache[str(product_id)] = result[0]
 
 		return jsonify({"message": f"Added {stock} units of {product_id} to inventory from {seller}"}), 200
 	except Exception as e:
 		db_conn.rollback()
 		return jsonify({"error": f"Intern unexpected server error buying: {e}"}), 500
+
 
 @app.route("/sell", methods=["POST"])
 def sell_item():
@@ -239,16 +265,11 @@ def sell_item():
 
 	try:
 		cursor.execute("SELECT * FROM products WHERE id = %s;", (product_id,))
-
 		if cursor.rowcount == 0:
 			return jsonify({"error": f"No product found with id {product_id}"}), 404
 
-		if cursor.rowcount > 1:
-			return jsonify({"error": f"Internal critical unexpected error: multiple products with same ID {product_id}"}), 500
-
 		cursor.execute("SELECT stock FROM inventory WHERE product_id = %s;", (product_id,))
 		result = cursor.fetchone()
-
 		if result:
 			product_stock = result[0]
 			if stock > product_stock:
@@ -258,6 +279,8 @@ def sell_item():
 				cursor.execute("DELETE FROM inventory WHERE product_id = %s;", (product_id,))
 			else:
 				cursor.execute("UPDATE inventory SET stock = stock - %s WHERE product_id = %s;", (stock, product_id))
+
+			cursor.execute("INSERT INTO transactions VALUES (%s, %s, %s, %s)", (node.id, client, product_id, stock))
 		
 			db_conn.commit()
 
@@ -272,7 +295,7 @@ def sell_item():
 			return jsonify({"message": f"Sold {stock} units of {product_id} to inventory to {client}"}), 200
 		else:
 			db_conn.rollback()
-			return jsonify({"error": f"Unexpected product {product_id} not found in inventory table"}), 404
+			return jsonify({"error": f"Product {product_id} not found in inventory table"}), 404
 
 	except Exception as e:
 		db_conn.rollback()
@@ -416,4 +439,4 @@ if __name__ == "__main__":
 	# Start listening in a thread
 	listening_thread = threading.Thread(target=node.start_listening, daemon=True).start()
 
-	app.run(debug=False, host="0.0.0.0", port=args.port, use_reloader=False)
+	app.run(debug=True, host="0.0.0.0", port=args.port)#, use_reloader=False)

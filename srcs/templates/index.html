@@ -33,32 +33,39 @@
             </ul>
         </div>
 
+		<div class="list-section">
+			<h2>Transactions</h2>
+			<ul id="transactions-list">
+				<!-- Transactions will be shown here -->
+			</ul>
+		</div>
+
 		<div class="card">
 			<h2>Add Product</h2>
             <form id="add-product-form">
                 <div class="form-control">
                     <label for="add-product">Product ID:</label>
-					<input type="text" id="add-product-id" name="product-id">
+					<input type="text" id="add-product-id" name="product-id" required>
                 </div>
                 <div class="form-control">
                     <label for="add-product-name">Product name:</label>
-                    <input type="text" id="add-product-name" name="product-name">
+                    <input type="text" id="add-product-name" name="product-name" required>
                 </div>
                 <div class="form-control">
                     <label for="add-product-description">Description:</label>
-                    <input type="text" id="add-product-description" name="product-description">
+                    <input type="text" id="add-product-description" name="product-description" required>
                 </div>
 				<div class="form-control">
                     <label for="add-product-unit-price">Unit Price:</label>
-                    <input type="number" id="add-product-unit-price" name="product-unit-price">
+                    <input type="number" id="add-product-unit-price" name="product-unit-price" required>
                 </div>
 				<div class="form-control">
                     <label for="add-product-weight">Weight:</label>
-                    <input type="number" id="add-product-weight" name="product-weight">
+                    <input type="number" id="add-product-weight" name="product-weight" step="any" required>
                 </div>
                 <div class="form-control">
 					<label for="add-product-expiration-date">Expiration Date:</label>
-                    <input type="date" id="add-product-expiration-date" name="product-expiration-date">
+                    <input type="date" id="add-product-expiration-date" name="product-expiration-date" required>
                 </div>
 				<button type="submit" class="btn">Add</button>
             </form>
@@ -69,7 +76,7 @@
             <form id="delete-product-form">
                 <div class="form-control">
                     <label for="delete-product">Product ID:</label>
-					<input type="text" id="delete-product-id" name="product-id">
+					<input type="text" id="delete-product-id" name="product-id" required>
                 </div>
 				<button type="submit" class="btn">Delete</button>
             </form>
@@ -81,15 +88,15 @@
                 <form id="buy-form">
                     <div class="form-control">
                         <label for="seller-buy">Seller:</label>
-                        <input type="text" id="seller-buy" name="seller">
+                        <input type="text" id="seller-buy" name="seller" required>
                     </div>
                     <div class="form-control">
                         <label for="product-buy">Product ID:</label>
-                        <input type="text" id="product-id-buy" name="product-id"></input>
+						<input type="text" id="product-id-buy" name="product-id"required>
                     </div>
                     <div class="form-control">
                         <label for="stock-buy">Quantity:</label>
-                        <input type="number" id="stock-buy" name="stock">
+                        <input type="number" id="stock-buy" name="stock" required>
                     </div>
                     <button type="submit" class="btn">Buy</button>
                 </form>
@@ -100,15 +107,15 @@
                 <form id="sell-form">
                     <div class="form-control">
                         <label for="client-sell">Client:</label>
-                        <input type="text" id="client-sell" name="client">
+                        <input type="text" id="client-sell" name="client" required>
                     </div>
                     <div class="form-control">
                         <label for="product-sell">Product ID:</label>
-                        <input type="text" id="product-id-sell" name="product-id"></input>
+                        <input type="text" id="product-id-sell" name="product-id"required>
                     </div>
                     <div class="form-control">
                         <label for="stock-sell">Quantity:</label>
-                        <input type="number" id="stock-sell" name="stock">
+                        <input type="number" id="stock-sell" name="stock" required>
                     </div>
                     <button type="submit" class="btn">Sell</button>
                 </form>
@@ -120,15 +127,15 @@
             <form id="send-request-form">
                 <div class="form-control">
                     <label for="node-id-request">Node ID:</label>
-                    <input type="text" id="node-id-request" name="node">
+                    <input type="text" id="node-id-request" name="node" required>
                 </div>
                 <div class="form-control">
                     <label for="product-request">Product:</label>
-                    <input type="text" id="product-request" name="product">
+                    <input type="text" id="product-request" name="product" required>
                 </div>
                 <div class="form-control">
                     <label for="stock-request">Quantity:</label>
-                    <input type="number" id="stock-request" name="stock">
+                    <input type="number" id="stock-request" name="stock" required>
                 </div>
                 <button type="submit" class="btn">Send</button>
             </form>
