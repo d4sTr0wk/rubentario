@@ -19,7 +19,7 @@ function updateRequests() {
     });
 }
 function updateTransactions() {
-    $.get("/get_transactions", function (data) {
+    $.get("/api/transactions", function (data) {
         var transactionList = '';
         data.forEach(function (item) {
             transactionList += "<li>Sender: ".concat(item.sender, " | Receiver: ").concat(item.receiver, " | Product: ").concat(item.product_id, " | Stock: ").concat(item.stock, "</li>");

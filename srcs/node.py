@@ -303,17 +303,26 @@ def sell_item():
 
 @app.route("/get_inventory", methods=["GET"])
 def get_inventory():
-	# Show the current inventory in the warehouse
 	print(node.inventory_cache)
 	return jsonify(node.inventory_cache), 200
 
-@app.route("/show_requests", methods=["GET"])
-def show_requests():
-	# Show the current requests queue in the warehouse
+
+@app.route("/get_requests", methods=["GET"])
+def get_requests():
 	with node.lock:
 		print(f"Current requests in node{id(node)}: {node.requests}")
 		return jsonify(node.requests), 200
 
+
+@app.route("/api/transactions", methods=["GET"])
+def get_transactions():
+	cursor.execute("SELECT * FROM transactions;")
+	transactions = cursor.fetchall()
+	result = [
+		{"sender": str(t[0]), "receiver": str(t[1]), "product_id": str(t[2]), "stock": t[3]}
+		for t in transactions
+	]
+	return jsonify(result), 200
 
 @app.route("/send_request", methods=["POST"])
 def send_request():

@@ -47,7 +47,7 @@ function updateRequests(): void {
 }
 
 function updateTransactions(): void {
-	$.get("/get_transactions", function (data: Transaction[]) {
+	$.get("/api/transactions", function (data: Transaction[]) {
 		let transactionList = '';
 		data.forEach(function (item) {
 			transactionList += `<li>Sender: ${item.sender} | Receiver: ${item.receiver} | Product: ${item.product_id} | Stock: ${item.stock}</li>`
