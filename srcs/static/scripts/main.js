@@ -1,9 +1,18 @@
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 // Function to fetch and update the inventory
 function updateInventory() {
     $.get("/get_inventory", function (data) {
-        var inventoryList = '';
-        for (var product in data) {
-            inventoryList += "<li>Product ID: ".concat(product, " | Stock: ").concat(data[product], " units</li>");
+        let inventoryList = '';
+        for (let product in data) {
+            inventoryList += `<li>Product ID: ${product} | Stock: ${data[product]} units</li>`;
         }
         $('#inventory-list').html(inventoryList);
     });
@@ -11,42 +20,80 @@ function updateInventory() {
 // Function update requests list
 function updateRequests() {
     $.get("/get_requests", function (data) {
-        var requestList = '';
+        let requestList = '';
         data.forEach(function (item) {
-            requestList += "<li>Requester Node: ".concat(item.requester_node, " | Product: ").concat(item.product, " | Quantity: ").concat(item.stock, "</li>");
+            requestList += `<li>Requester Node: ${item.requester_node} | Product: ${item.product} | Quantity: ${item.stock}</li>`;
         });
         $('#requests-list').html(requestList);
     });
 }
-function updateTransactions() {
-    $.get("/api/transactions", function (data) {
-        var transactionList = '';
-        data.forEach(function (item) {
-            transactionList += "<li>Sender: ".concat(item.sender, " | Receiver: ").concat(item.receiver, " | Product: ").concat(item.product_id, " | Stock: ").concat(item.stock, "</li>");
-        });
-        $('#transactions-list').html(transactionList);
+function fetchTransactions() {
+    return __awaiter(this, void 0, void 0, function* () {
+        const response = yield fetch('/api/transactions');
+        if (!response.ok) {
+            throw new Error(`Transaction read table error: ${response.statusText}`);
+        }
+        return response.json();
     });
 }
+function renderTable(transactions) {
+    const tbody = document.querySelector('#transactionsTable tbody');
+    if (!tbody)
+        return;
+    tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
+    transactions.forEach((transaction) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${transaction.sender}</td>
+            <td>${transaction.receiver}</td>
+            <td>${transaction.product_id}</td>
+            <td>${transaction.stock}</td>
+            <td>${new Date(transaction.date).toLocaleString()}</td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+function updateTransactions() {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const transactions = yield fetchTransactions();
+            renderTable(transactions);
+        }
+        catch (error) {
+            console.error('Error getting transactions:', error);
+        }
+    });
+}
+//function updateTransactions(): void {
+//	$.get("/api/transactions", function (data: Transaction[]) {
+//		let transactionList = '';
+//		data.forEach(function (item) {
+//			transactionList += `<li>Sender: ${item.sender} | Receiver: ${item.receiver} | Product: ${item.product_id} | Stock: ${item.stock}</li>`
+//		});
+//
+//		$('#transactions-list').html(transactionList);
+//	});
+//}
 // Add product to database
 $('#add-product-form').on('submit', function (e) {
     e.preventDefault();
-    var product_id = $('#add-product-id').val();
-    var name = $('#add-product-name').val();
-    var description = $('#add-product-description').val();
+    const product_id = $('#add-product-id').val();
+    const name = $('#add-product-name').val();
+    const description = $('#add-product-description').val();
     //const description = description_input === '' ? null : description_input;
-    var unit_price = parseFloat($('#add-product-unit-price').val());
+    const unit_price = parseFloat($('#add-product-unit-price').val());
     //const unit_price = unit_price_input === '' ? null: parseFloat(unit_price_input);
-    var weight = parseFloat($('#add-product-weight').val());
+    const weight = parseFloat($('#add-product-weight').val());
     //const weight = weight_input === '' ? null : parseFloat(weight_input);
-    var expiration_date = $('#add-product-expiration-date').val();
+    const expiration_date = $('#add-product-expiration-date').val();
     //const expiration_date = expiration_date_input === '' ? null : expiration_date_input;
-    var productData = {
-        product_id: product_id,
-        name: name,
-        description: description,
-        unit_price: unit_price,
-        weight: weight,
-        expiration_date: expiration_date
+    const productData = {
+        product_id,
+        name,
+        description,
+        unit_price,
+        weight,
+        expiration_date
     };
     $.ajax({
         url: '/add_product',
@@ -63,12 +110,12 @@ $('#add-product-form').on('submit', function (e) {
 });
 $('#delete-product-form').on('submit', function (e) {
     e.preventDefault();
-    var product_id = $('#delete-product-id').val();
+    const product_id = $('#delete-product-id').val();
     $.ajax({
         url: '/delete_product',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({ product_id: product_id }),
+        data: JSON.stringify({ product_id }),
         success: function (response) {
             alert(response.message);
         },
@@ -80,14 +127,14 @@ $('#delete-product-form').on('submit', function (e) {
 // Handle buying a product
 $('#buy-form').on('submit', function (e) {
     e.preventDefault();
-    var seller = $('#seller-buy').val();
-    var product_id = $('#product-id-buy').val();
-    var stock = parseInt($('#stock-buy').val());
+    const seller = $('#seller-buy').val();
+    const product_id = $('#product-id-buy').val();
+    const stock = parseInt($('#stock-buy').val());
     $.ajax({
         url: '/buy',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({ seller: seller, product_id: product_id, stock: stock }),
+        data: JSON.stringify({ seller, product_id, stock }),
         success: function (response) {
             alert(response.message);
             updateInventory(); // Update inventory after buying
@@ -101,14 +148,14 @@ $('#buy-form').on('submit', function (e) {
 // Handle selling a product
 $('#sell-form').on('submit', function (e) {
     e.preventDefault();
-    var client = $('#client-sell').val();
-    var product_id = $('#product-id-sell').val();
-    var stock = parseInt($('#stock-sell').val());
+    const client = $('#client-sell').val();
+    const product_id = $('#product-id-sell').val();
+    const stock = parseInt($('#stock-sell').val());
     $.ajax({
         url: '/sell',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({ client: client, product_id: product_id, stock: stock }),
+        data: JSON.stringify({ client, product_id, stock }),
         success: function (response) {
             alert(response.message);
             updateInventory(); // Update inventory after selling
@@ -122,14 +169,14 @@ $('#sell-form').on('submit', function (e) {
 // Handle sending a manual notification
 $('#send-request-form').on('submit', function (e) {
     e.preventDefault();
-    var destination_node = $('#node-id-request').val();
-    var product = $('#product-request').val();
-    var stock = parseInt($('#stock-request').val());
+    const destination_node = $('#node-id-request').val();
+    const product = $('#product-request').val();
+    const stock = parseInt($('#stock-request').val());
     $.ajax({
         url: '/send_request',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({ destination_node: destination_node, product: product, stock: stock }),
+        data: JSON.stringify({ destination_node, product, stock }),
         success: function (response) {
             alert(response.message);
         },

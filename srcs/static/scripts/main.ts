@@ -21,6 +21,7 @@ interface Transaction {
 	receiver: string;
 	product_id: string;
 	stock: number;
+	date: string;
 }
 
 // Function to fetch and update the inventory
@@ -46,16 +47,52 @@ function updateRequests(): void {
   });
 }
 
-function updateTransactions(): void {
-	$.get("/api/transactions", function (data: Transaction[]) {
-		let transactionList = '';
-		data.forEach(function (item) {
-			transactionList += `<li>Sender: ${item.sender} | Receiver: ${item.receiver} | Product: ${item.product_id} | Stock: ${item.stock}</li>`
-		});
-
-		$('#transactions-list').html(transactionList);
-	});
+async function fetchTransactions(): Promise<Transaction[]> {
+	const response = await fetch('/api/transactions');
+	if (!response.ok) {
+		throw new Error(`Transaction read table error: ${response.statusText}`);
+	}
+	return response.json();
 }
+
+function renderTable(transactions: Transaction[]): void {
+	const tbody = document.querySelector('#transactionsTable tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
+
+    transactions.forEach((transaction) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${transaction.sender}</td>
+            <td>${transaction.receiver}</td>
+            <td>${transaction.product_id}</td>
+            <td>${transaction.stock}</td>
+            <td>${new Date(transaction.date).toLocaleString()}</td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+async function updateTransactions(): Promise<void> {
+    try {
+        const transactions = await fetchTransactions();
+        renderTable(transactions);
+    } catch (error) {
+        console.error('Error getting transactions:', error);
+    }
+}
+
+//function updateTransactions(): void {
+//	$.get("/api/transactions", function (data: Transaction[]) {
+//		let transactionList = '';
+//		data.forEach(function (item) {
+//			transactionList += `<li>Sender: ${item.sender} | Receiver: ${item.receiver} | Product: ${item.product_id} | Stock: ${item.stock}</li>`
+//		});
+//
+//		$('#transactions-list').html(transactionList);
+//	});
+//}
 
 // Add product to database
 $('#add-product-form').on('submit', function (e: JQuery.SubmitEvent) {

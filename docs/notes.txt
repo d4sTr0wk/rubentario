@@ -5,4 +5,5 @@ Base de datos:
     · Las transacciones tienen: fecha, ID de transferencia, ID de objeto, cantidad, origen y destino (strings).
     · Arquitectura híbrida de RabbitMQ y gRPC.
 
-30/12/24 [máximo}: send_request imprime en el log del servidor los posibles errores en la transmisión del request a través de RabbitMQ pero no lo reporta al usuario en la web.
+30/12/24 [máximo]: send_request imprime en el log del servidor los posibles errores en la transmisión del request a través de RabbitMQ pero no lo reporta al usuario en la web.
+2/1/2025 [máximo]: ahora mismo para imprimir las transacciones cada vez que se hace una nueva se actualiza en el HTML leyendo todas las transacciones. Si la tabla crece considerablemente el nodo dedicaría gran cómputo de tiempo en reportar todas las transacciones cuando a lo mejor solo tiene que entregar unas pocas. Además, no hay forma de limpiar las transacciones salvo borrar manualmente la tabla en PostgreSQL.

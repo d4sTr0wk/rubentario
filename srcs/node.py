@@ -26,7 +26,6 @@ cursor = db_conn.cursor()
 app = Flask(__name__)
 app.secret_key = "vc0910$$"
 
-
 #Predifined users
 users = {
 	"admin": "admin",
@@ -91,7 +90,8 @@ class Node:
 				sender VARCHAR(100) NOT NULL,
 				receiver VARCHAR(100) NOT NULL,
 				product_id VARCHAR(50) NOT NULL,
-				stock INTEGER NOT NULL
+				stock INTEGER NOT NULL,
+				date TIMESTAMP NOT NULL
 			);
 		''');
 
@@ -229,7 +229,7 @@ def buy_item():
 		else:
 			cursor.execute("UPDATE inventory SET stock = stock + %s WHERE product_id = %s;", (stock, product_id))
 
-		cursor.execute("INSERT INTO transactions VALUES (%s, %s, %s, %s)", (seller, node.id, product_id, stock))
+		cursor.execute("INSERT INTO transactions VALUES (%s, %s, %s, %s, NOW())", (seller, node.id, product_id, stock))
 
 		db_conn.commit()
 
@@ -280,7 +280,7 @@ def sell_item():
 			else:
 				cursor.execute("UPDATE inventory SET stock = stock - %s WHERE product_id = %s;", (stock, product_id))
 
-			cursor.execute("INSERT INTO transactions VALUES (%s, %s, %s, %s)", (node.id, client, product_id, stock))
+			cursor.execute("INSERT INTO transactions VALUES (%s, %s, %s, %s, NOW())", (node.id, client, product_id, stock))
 		
 			db_conn.commit()
 
@@ -319,7 +319,7 @@ def get_transactions():
 	cursor.execute("SELECT * FROM transactions;")
 	transactions = cursor.fetchall()
 	result = [
-		{"sender": str(t[0]), "receiver": str(t[1]), "product_id": str(t[2]), "stock": t[3]}
+			{"sender": str(t[0]), "receiver": str(t[1]), "product_id": str(t[2]), "stock": t[3], "date":t[4]}
 		for t in transactions
 	]
 	return jsonify(result), 200
