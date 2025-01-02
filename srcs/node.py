@@ -113,11 +113,21 @@ class Node:
 
 
 	def send_request(self, destination_node, product, stock):
-		message = {"requester_node": node.id, "product": product, "stock": stock}
 		try:
+			# Reconnect with RabbitMQ
+			if not self.publish_connection or self.publish_connection.is_closed:
+				print("Closed connection. Trying to open it . . .")
+				self.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
+			if not self.publish_channel or self.publish_channel.is_closed:
+				print("Closed channel. Trying create new one . . .")
+				self.publish_channel = self.publish_connection.channel()
+
+			message = {"requester_node": node.id, "product": product, "stock": stock}
 			self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message)) 
 		except pika.exceptions.AMQPChannelError as e:
 			print(f"Error in publish_channel: {e}")
+		except pika.exceptions.AMQPConnectionError as e:
+			print(f"Error in publish_connection: {e}")
 		except Exception as e:
 			print(f"Error sending request to {destination_node}: ({e})")
 

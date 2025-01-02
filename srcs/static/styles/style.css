@@ -20,6 +20,65 @@ body {
     line-height: 1.6;
 }
 
+table {
+    width: 100%;
+    border-collapse: separate; /* Mantiene bordes separados */
+    border-spacing: 0;
+    background-color: var(--card-background);
+    border: 2px solid var(--primary-color); /* Marco exterior más definido */
+    border-radius: 12px;
+	border-collapse: separate;
+    overflow: hidden;
+    box-shadow: var(--soft-shadow);
+	margin-bottom: 2rem;
+}
+
+table:hover {
+	transform: translateY(0);
+	box-shadow: var(--soft-shadow);
+}
+
+thead {
+    background-color: #91c1d2;
+    color: black;
+}
+
+thead th {
+    padding: 1rem;
+    font-weight: 600;
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 2px solid var(--background-color); /* Línea debajo del encabezado */
+}
+
+tbody {
+	background-color: #e2ffff;
+}
+
+tbody tr {
+    border-bottom: 1px solid #e0e0e0;
+}
+
+tbody td {
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+    text-align: left;
+    border-right: 1px solid #e0e0e0; /* Bordes verticales entre celdas */
+}
+
+tbody tr:hover {
+    background-color: rgb(232, 208, 255); /* Resaltado más visible */
+    transition: background-color 0.3s ease;
+}
+
+tfoot td {
+    padding: 1rem;
+    font-weight: 600;
+    text-align: right;
+    color: var(--text-color);
+}
+
 .container {
     max-width: 800px;
     margin: 0 auto;
@@ -40,17 +99,23 @@ body {
 }
 
 .card {
+	margin-top: 2rem;
     background-color: var(--card-background);
     border-radius: 12px;
     box-shadow: var(--soft-shadow);
     padding: 1.5rem;
     margin-bottom: 1.5rem;
-    transition: all 0.3s ease;
+	padding: 1.5rem;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .card:hover {
     transform: translateY(-5px);
     box-shadow: 0 15px 30px rgba(0, 0, 0, 0.08);
+}
+
+.card h2 {
+	margin-bottom: 1.5rem;
 }
 
 .form-grid {
