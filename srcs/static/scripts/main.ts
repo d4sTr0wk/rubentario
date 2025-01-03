@@ -5,9 +5,13 @@ interface ProductRequest {
   stock: number;
 }
 
+interface InventoryDict {
+	[product_id: string]: number;
+}
+
 // Type definition for product
 interface Product {
-  product_id: string;
+  id: string;
   name: string;
   description: string;
   unit_price: number;
@@ -24,20 +28,96 @@ interface Transaction {
 	date: string;
 }
 
-// Function to fetch and update the inventory
-function updateInventory(): void {
-  $.get("/get_inventory", function (data: { [key: string]: number }) {
-    let inventoryList = '';
-    for (let product in data) {
-      inventoryList += `<li>Product ID: ${product} | Stock: ${data[product]} units</li>`;
-    }
-    $('#inventory-list').html(inventoryList);
-  });
+// INVENTORY
+async function fetchInventory(): Promise<InventoryDict> {
+	const response = await fetch('/api/inventory');
+	console.log(response);
+	if (!response.ok) {
+		throw new Error(`Inventory read table error: ${response.statusText}`);
+	}
+	return response.json();
 }
 
-// Function update requests list
+function renderInventoryTable(inventory: InventoryDict): void {
+	const tbody = document.querySelector('#inventoryTable tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
+
+	if (Object.keys(inventory).length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2">No inventory available</td></tr>';
+        return;
+    }
+
+	for (const product_id in inventory) {
+		const stock = inventory[product_id];
+		const row = document.createElement('tr');
+		row.innerHTML = `
+			<td>${product_id}</td>
+			<td>${stock}</td>
+		`;
+        tbody.appendChild(row);
+	}
+}
+
+
+async function updateInventory(): Promise<void> {
+    try {
+        const inventory = await fetchInventory();
+        renderInventoryTable(inventory);
+    } catch (error) {
+        console.error('Error getting inventory:', error);
+    }
+}
+
+
+// PRODUCTS
+async function fetchProducts(): Promise<Product[]> {
+	const response = await fetch('/api/products');
+	if (!response.ok) {
+		throw new Error(`Product read table error: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+function renderProductsTable(products: Product[]): void {
+	const tbody = document.querySelector('#productsTable tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
+
+	if (products.length === 0 || products.every(p => Object.keys(p).length === 0)) {
+        tbody.innerHTML = '<tr><td colspan="6">No products available</td></tr>';
+        return;
+    }
+
+    products.forEach((product) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${product.id}</td>
+            <td>${product.name}</td>
+            <td>${product.description}</td>
+            <td>${product.unit_price}</td>
+			<td>${product.weight}</td>
+            <td>${new Date(product.expiration_date).toLocaleDateString()}</td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+async function updateProducts(): Promise<void> {
+    try {
+        const products = await fetchProducts();
+        renderProductsTable(products);
+    } catch (error) {
+        console.error('Error getting products:', error);
+    }
+}
+
+
+// REQUESTS
 function updateRequests(): void {
-  $.get("/get_requests", function (data: ProductRequest[]) {
+  $.get("/api/requests", function (data: ProductRequest[]) {
     let requestList = '';
     data.forEach(function (item) {
       requestList += `<li>Requester Node: ${item.requester_node} | Product: ${item.product} | Quantity: ${item.stock}</li>`;
@@ -47,6 +127,8 @@ function updateRequests(): void {
   });
 }
 
+
+// TRANSACTIONS
 async function fetchTransactions(): Promise<Transaction[]> {
 	const response = await fetch('/api/transactions');
 	if (!response.ok) {
@@ -55,12 +137,16 @@ async function fetchTransactions(): Promise<Transaction[]> {
 	return response.json();
 }
 
-function renderTable(transactions: Transaction[]): void {
+function renderTransactionsTable(transactions: Transaction[]): void {
 	const tbody = document.querySelector('#transactionsTable tbody');
     if (!tbody) return;
 
     tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
 
+	if (transactions.length === 0 || transactions.every(t => Object.keys(t).length === 0)) {
+        tbody.innerHTML = '<tr><td colspan="5">No transactions available</td></tr>';
+        return;
+    }
     transactions.forEach((transaction) => {
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -77,27 +163,16 @@ function renderTable(transactions: Transaction[]): void {
 async function updateTransactions(): Promise<void> {
     try {
         const transactions = await fetchTransactions();
-        renderTable(transactions);
+        renderTransactionsTable(transactions);
     } catch (error) {
         console.error('Error getting transactions:', error);
     }
 }
 
-//function updateTransactions(): void {
-//	$.get("/api/transactions", function (data: Transaction[]) {
-//		let transactionList = '';
-//		data.forEach(function (item) {
-//			transactionList += `<li>Sender: ${item.sender} | Receiver: ${item.receiver} | Product: ${item.product_id} | Stock: ${item.stock}</li>`
-//		});
-//
-//		$('#transactions-list').html(transactionList);
-//	});
-//}
-
 // Add product to database
 $('#add-product-form').on('submit', function (e: JQuery.SubmitEvent) {
   e.preventDefault();
-  const product_id = $('#add-product-id').val() as string;
+  const id = $('#add-product-id').val() as string;
   const name = $('#add-product-name').val() as string;
 
   const description = $('#add-product-description').val() as string;
@@ -113,7 +188,7 @@ $('#add-product-form').on('submit', function (e: JQuery.SubmitEvent) {
   //const expiration_date = expiration_date_input === '' ? null : expiration_date_input;
 
   const productData: Product = {
-    product_id,
+    id,
     name,
     description,
     unit_price,
@@ -127,24 +202,27 @@ $('#add-product-form').on('submit', function (e: JQuery.SubmitEvent) {
     contentType: 'application/json',
     data: JSON.stringify(productData),
     success: function (response: { message: string }) {
-      alert(response.message);
-    },
+		updateProducts();
+		alert(response.message);
+	},
     error: function (response: JQuery.jqXHR) {
-      alert(response.responseJSON.error);
+		alert(response.responseJSON.error);
     }
   });
 });
 
 $('#delete-product-form').on('submit', function (e: JQuery.SubmitEvent) {
 	e.preventDefault();
-	const product_id = $('#delete-product-id').val() as string;
+	const id = $('#delete-product-id').val() as string;
 
 	$.ajax({
 		url: '/delete_product',
 		method: 'POST',
 		contentType: 'application/json',
-		data: JSON.stringify({ product_id }),
+		data: JSON.stringify({ id }),
 		success: function (response: { message: string}) {
+			updateProducts();
+			updateInventory();
 			alert(response.message);
 		},
 		error: function (response: JQuery.jqXHR) {
@@ -222,6 +300,7 @@ $('#send-request-form').on('submit', function (e: JQuery.SubmitEvent) {
 
 // Initial call to update inventory and notifications (also in case web is refreshed)
 updateInventory();
+updateProducts();
 updateRequests();
 updateTransactions();
 // Interval of long polling to append new requests

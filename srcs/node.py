@@ -6,6 +6,7 @@ import threading
 import argparse
 import signal
 import sys
+from pika.spec import methods
 import requests
 import psycopg2
 from psycopg2 import errors
@@ -55,11 +56,22 @@ class Node:
 		self.publish_channel = self.publish_connection.channel()
 
 		# Notifications for incoming requests
-		self.requests = []
+		cursor.execute('''
+			CREATE TABLE IF NOT EXISTS requests (
+				requester_node VARCHAR(255) NOT NULL,
+				product_id VARCHAR(50) NOT NULL,
+				stock INTEGER NOT NULL
+			);
+		''')
+		self.requests_cache = []
+		cursor.execute("SELECT * FROM requests;")
+		if cursor.rowcount > 0:
+			rows = cursor.fetchall()
+			self.requests_cache = [
+				{"requester_node": str(r[0]), "product_id": str(r[1]), "stock": r[2]} for r in rows
+			]
 
-		# Products
-		self.products = [{"id": "1", "name": "Producto A"}]
-		# Create products table
+		# PRODUCTS
 		cursor.execute('''
 			CREATE TABLE IF NOT EXISTS products (
 				id VARCHAR(50) PRIMARY KEY,
@@ -70,8 +82,15 @@ class Node:
 				expiration_date DATE
 			);
 		''')
+		self.products_cache = [{}]
+		cursor.execute("SELECT * FROM products;")
+		if cursor.rowcount > 0:
+			rows = cursor.fetchall()
+			self.products_cache = [
+					{"id": str(r[0]), "name": str(r[1]), "description": str(r[2]), "unit_price": r[3], "weight": r[4], "expiration_date": str(r[5])} for r in rows
+			]
 
-		# Create inventory table and cached local inventory
+		# INVENTORY
 		cursor.execute('''
 			CREATE TABLE IF NOT EXISTS inventory (
 				product_id VARCHAR (50) PRIMARY KEY,
@@ -80,11 +99,12 @@ class Node:
 			);
 		''')
 		self.inventory_cache = {}
-		cursor.execute("SELECT * FROM inventory")
-		rows = cursor.fetchall()
-		self.inventory_cache.update({str(row[0]): row[1] for row in rows})
+		cursor.execute("SELECT * FROM inventory;")
+		if cursor.rowcount > 0:
+			rows = cursor.fetchall()
+			self.inventory_cache.update({str(row[0]): row[1] for row in rows})
 
-		# Create transactions (history) table 
+		# TRANSACTIONS
 		cursor.execute('''
 			CREATE TABLE IF NOT EXISTS transactions (
 				sender VARCHAR(100) NOT NULL,
@@ -94,6 +114,13 @@ class Node:
 				date TIMESTAMP NOT NULL
 			);
 		''');
+		self.transactions_cache = [{}]
+		cursor.execute("SELECT * FROM transactions;")
+		if cursor.rowcount > 0:
+			transactions = cursor.fetchall()
+			self.transactions_cache = [
+				{"sender": str(t[0]), "receiver": str(t[1]), "product_id": str(t[2]), "stock": t[3], "date": str(t[4])} for t in transactions
+			]
 
 		db_conn.commit()
 
@@ -112,7 +139,7 @@ class Node:
 			print(f"Error: {e}")
 
 
-	def send_request(self, destination_node, product, stock):
+	def send_request(self, destination_node, product_id, stock):
 		try:
 			# Reconnect with RabbitMQ
 			if not self.publish_connection or self.publish_connection.is_closed:
@@ -122,8 +149,9 @@ class Node:
 				print("Closed channel. Trying create new one . . .")
 				self.publish_channel = self.publish_connection.channel()
 
-			message = {"requester_node": node.id, "product": product, "stock": stock}
+			message = {"requester_node": node.id, "product_id": product_id, "stock": stock}
 			self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message)) 
+
 		except pika.exceptions.AMQPChannelError as e:
 			print(f"Error in publish_channel: {e}")
 		except pika.exceptions.AMQPConnectionError as e:
@@ -161,7 +189,7 @@ def index():
 	if "username" not in session:
 		return redirect(url_for("login"))
 
-	return render_template("index.html", node_id = node.id, inventory=node.inventory_cache, requests=node.requests, username=session["username"])
+	return render_template("index.html", node_id = node.id, username=session["username"])
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -195,20 +223,20 @@ def new_request():
 
 	# JSON data exctraction
 	requester_node = data["requester_node"]
-	product = data["product"]
+	product_id = data["product_id"]
 	stock = data["stock"]
 
 	# Validate all fields
-	if not all([requester_node, product, stock]):
+	if not all([requester_node, product_id, stock]):
 		return jsonify({"error": "Missing required fields"}), 400
 
 	with node.lock:
-		node.requests.append({
+		node.requests_cache.append({
 			'requester_node': requester_node,
-			'product': product,
+			'product_id': product_id,
 			'stock': stock
 		})
-		print(f"New request added to node{id(node)} request list {id(node.requests)}: Requester: {requester_node}, Product: {product}, Quantity; {stock}")
+		print(f"New request added to node{id(node)} request list {id(node.requests_cache)}: Requester: {requester_node}, Product: {product_id}, Quantity; {stock}")
 
 	return jsonify({"message": "Request added successfully"}), 200
 
@@ -244,6 +272,13 @@ def buy_item():
 		db_conn.commit()
 
 		with node.lock:
+			cursor.execute("SELECT * FROM transactions ORDER BY date DESC LIMIT 1;")
+			row = cursor.fetchone()
+			if row is not None:
+				node.transactions_cache.append(
+				{"sender": str(row[0]), "receiver": str(row[1]), "product_id": str(row[2]), "stock": row[3], "date":str(row[4])}
+				)
+
 			if str(product_id) in node.inventory_cache:
 				node.inventory_cache[str(product_id)] += stock
 			else:
@@ -295,6 +330,13 @@ def sell_item():
 			db_conn.commit()
 
 			with node.lock:
+				cursor.execute("SELECT * FROM transactions ORDER BY date DESC LIMIT 1;")
+				row = cursor.fetchone()
+				if row is not None:
+					node.transactions_cache.append(
+					{"sender": str(row[0]), "receiver": str(row[1]), "product_id": str(row[2]), "stock": row[3], "date":str(row[4])}
+					)
+
 				if str(product_id) in node.inventory_cache:
 					node.inventory_cache[str(product_id)] -= stock
 					if node.inventory_cache[str(product_id)] <= 0:
@@ -311,28 +353,30 @@ def sell_item():
 		db_conn.rollback()
 		return jsonify({"error": f"Intern unexpected server error selling: {e}"}), 500
 
-@app.route("/get_inventory", methods=["GET"])
+
+@app.route("/api/inventory", methods=["GET"])
 def get_inventory():
-	print(node.inventory_cache)
+	print(f"Inventory: { node.inventory_cache }")
 	return jsonify(node.inventory_cache), 200
 
 
-@app.route("/get_requests", methods=["GET"])
+@app.route("/api/products", methods=["GET"])
+def get_products():
+	print(f"Products: { node.products_cache }")
+	return jsonify(node.products_cache), 200
+
+@app.route("/api/requests", methods=["GET"])
 def get_requests():
 	with node.lock:
-		print(f"Current requests in node{id(node)}: {node.requests}")
-		return jsonify(node.requests), 200
+		print(f"Current requests in node{id(node)}: {node.requests_cache}")
+		return jsonify(node.requests_cache), 200
 
 
 @app.route("/api/transactions", methods=["GET"])
 def get_transactions():
-	cursor.execute("SELECT * FROM transactions;")
-	transactions = cursor.fetchall()
-	result = [
-			{"sender": str(t[0]), "receiver": str(t[1]), "product_id": str(t[2]), "stock": t[3], "date":t[4]}
-		for t in transactions
-	]
-	return jsonify(result), 200
+	print(f"Transactions: { node.transactions_cache }")
+	return jsonify(node.transactions_cache), 200
+
 
 @app.route("/send_request", methods=["POST"])
 def send_request():
@@ -350,7 +394,7 @@ def send_request():
 			return jsonify({"error": "Missing required fields"}), 400
 
 		print(f"Sending request to {destination_node} for {product} ({stock} units)")
-		node.send_request(destination_node=destination_node, product=product, stock=stock)
+		node.send_request(destination_node=destination_node, product_id=product, stock=stock)
 		return jsonify({"message": f"Request for {product} sent to {destination_node} ({stock} units)"}), 200
 	except KeyError as e:
 		return jsonify({"error": f"Missing key in request data ({e})"}), 400
@@ -359,9 +403,6 @@ def send_request():
 	except Exception as e:
 		return jsonify({"error": f"Internal unexpected server error ({str(e)})"}), 500
 
-@app.route("/get_products", methods=["GET"])
-def get_products():
-	return jsonify(node.products), 200
 
 @app.route("/add_product", methods=["POST"])
 def add_product():
@@ -369,23 +410,27 @@ def add_product():
 	if data is None:
 		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
 
-	product_id = data["product_id"]
+	id = data["id"]
 	name = data["name"]
 	description = data["description"]
 	unit_price = float(data["unit_price"])
 	weight = float(data["weight"])
 	expiration_date = datetime.strptime(data["expiration_date"], '%Y-%m-%d')
 
-	if not all([product_id, name, description, unit_price, weight, expiration_date]):
+	if not all([id, name, description, unit_price, weight, expiration_date]):
 		return jsonify({"error": "Missing required fields"}), 400
 
 	try:
-		cursor.execute("INSERT INTO products (id, name, description, unit_price, weight, expiration_date) VALUES (%s, %s, %s, %s, %s, %s);", (product_id, name, description, unit_price, weight, expiration_date))
+		cursor.execute("INSERT INTO products (id, name, description, unit_price, weight, expiration_date) VALUES (%s, %s, %s, %s, %s, %s);", (id, name, description, unit_price, weight, expiration_date))
 		db_conn.commit()
+
+		with node.lock:
+			node.products_cache.append({'id': id, 'name': name, 'description': description, 'unit_price': unit_price, 'weight': weight, 'expiration_date': str(expiration_date)})
+
 		return jsonify({"message": f"New product ({name}) added"}), 200
 	except errors.UniqueViolation:
 		db_conn.rollback()
-		return jsonify({"error": f"ID {product_id} product already exists!"}), 409
+		return jsonify({"error": f"ID {id} product already exists!"}), 409
 	except Exception as e:
 		db_conn.rollback()
 		return jsonify({"error": f"Intern unexpected server error adding: {e}"}), 500
@@ -396,18 +441,26 @@ def delete_product():
 	if data is None:
 		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
 
-	product_id = data["product_id"]
-	if not product_id:
+	id = data["id"]
+	if not id:
 		return jsonify({"error": "Missing required field"}), 400
 
 	try:
-		cursor.execute("DELETE FROM products WHERE id = %s;", (product_id,))
+		cursor.execute("DELETE FROM inventory WHERE product_id = %s;", (id,))
+		cursor.execute("DELETE FROM products WHERE id = %s;", (id,))
 		db_conn.commit()
 
-		if cursor.rowcount == 0:
-			return jsonify({"error": f"No product found with id {product_id}"}), 404
+		with node.lock:
+			node.inventory_cache.pop(id)
+			for i, item in enumerate(node.products_cache):
+				if item.get("id") == id:
+					node.products_cache.pop(i)
+					break
 
-		return jsonify({"message": f"Product {product_id} deleted"}), 200
+		if cursor.rowcount == 0:
+			return jsonify({"error": f"No product found with id {id}"}), 404
+
+		return jsonify({"message": f"Product {id} deleted from products table and inventory table"}), 200
 	except Exception as e:
 		db_conn.rollback()
 		return jsonify({"error": f"Intern unexpected server error deleting: {e}"}), 500
@@ -453,7 +506,7 @@ if __name__ == "__main__":
 
 	# Create the node object
 	node = Node(id=args.id, requests_queue=args.requests_queue, url='localhost', port=args.port) 
-	print(f"Node initialized with ID: {id(node)}, requests queue ID: {id(node.requests)}, PORT: {node.port}")
+	print(f"Node initialized with ID: {id(node)}, requests queue ID: {id(node.requests_cache)}, PORT: {node.port}")
 
 	# Start listening in a thread
 	listening_thread = threading.Thread(target=node.start_listening, daemon=True).start()
