@@ -3,59 +3,182 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>{{ node_id }} Management</title>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> <!-- jQuery -->
-	<script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script> <!-- socketio -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles/style.css') }}">
+    <title>Warehouse Management</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+        }
+
+        .sidebar {
+            width: 200px;
+            background-color: #333;
+            color: white;
+            height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .sidebar a {
+            color: white;
+            display: block;
+            padding: 10px;
+            text-decoration: none;
+            margin-bottom: 10px;
+            border-radius: 5px;
+        }
+
+        .sidebar a:hover {
+            background-color: #575757;
+        }
+
+        .container {
+            padding: 20px;
+            flex-grow: 1;
+        }
+
+        .section {
+            display: none;
+        }
+
+        .active {
+            display: block;
+        }
+    </style>
 </head>
 <body>
-	<h3>Welcome, {{ username }}</h3>
-	<a href="/logout">Logout</a>
-	<h1>Warehouse {{ node_id }} Inventory</h1>
-    <ul id="inventory-list">
-        <!-- List of inventory items will be shown here -->
-    </ul>
+    <div class="sidebar">
+        <h2>Menu</h2>
+        <a href="#" class="menu-link" data-section="inventory-section">Inventory</a>
+        <a href="#" class="menu-link" data-section="products-section">Products</a>
+        <a href="#" class="menu-link" data-section="requests-section">Requests</a>
+    </div>
 
-    <h2>Requests</h2>
-    <ul id="requests-list">
-        <!-- Requests will be shown here -->
-    </ul>
+    <div class="container">
+        <!-- Inventory Section -->
+        <div id="inventory-section" class="section active">
+            <h2>Inventory</h2>
+            <table border="1" id="inventoryTable">
+                <thead>
+                    <tr>
+                        <th>Product ID</th>
+                        <th>Stock</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
 
-    <h2>Actions</h2>
-    <!-- Form to buy product -->
-    <form id="buy-form">
-		<label for="seller-buy">Seller:</label>
-		<input type="text" id="seller-buy" name="seller">
-        <label for="product-buy">Product:</label>
-        <input type="text" id="product-buy" name="product">
-        <label for="quantity-buy">Quantity:</label>
-        <input type="number" id="quantity-buy" name="quantity">
-        <button type="submit">Buy</button>
-    </form>
+            <h3>Buy Product</h3>
+            <form id="buy-form">
+                <label for="seller-buy">Seller:</label>
+                <input type="text" id="seller-buy" name="seller" required><br>
 
-    <!-- Form to sell product -->
-    <form id="sell-form">
-		<label for="client-sell">Client:</label>
-		<input type="text" id="client-sell" name="client">
-        <label for="product-sell">Product:</label>
-        <input type="text" id="product-sell" name="product">
-        <label for="quantity-sell">Quantity:</label>
-        <input type="number" id="quantity-sell" name="quantity">
-        <button type="submit">Sell</button>
-    </form>
+                <label for="product-buy">Product ID:</label>
+                <input type="text" id="product-id-buy" name="product-id" required><br>
 
-    <!-- Form to send a manual notification -->
-    <h2>Send Request</h2>
-    <form id="send-request-form">
-		<label for="node-id-request">Node ID:</label>
-		<input type="text" id="node-id-request" name="node">
-        <label for="product-request">Product:</label>
-        <input type="text" id="product-request" name="product">
-		<label for="quantity-request">Quantity:</label>
-		<input type="number" id="quantity-request" name="quantity">
-        <button type="submit">Send</button>
-    </form>
+                <label for="stock-buy">Quantity:</label>
+                <input type="number" id="stock-buy" name="stock" required><br>
 
-	<script src="../static/scripts/main.js"></script>
+                <button type="submit">Buy</button>
+            </form>
+
+            <h3>Sell Product</h3>
+            <form id="sell-form">
+                <label for="client-sell">Client:</label>
+                <input type="text" id="client-sell" name="client" required><br>
+
+                <label for="product-sell">Product ID:</label>
+                <input type="text" id="product-id-sell" name="product-id" required><br>
+
+                <label for="stock-sell">Quantity:</label>
+                <input type="number" id="stock-sell" name="stock" required><br>
+
+                <button type="submit">Sell</button>
+            </form>
+        </div>
+
+        <!-- Products Section -->
+        <div id="products-section" class="section">
+            <h2>Products</h2>
+            <table border="1" id="productsTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Unit Price</th>
+                        <th>Weight</th>
+                        <th>Expiration Date</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+
+            <h3>Add Product</h3>
+            <form id="add-product-form">
+                <label for="add-product-id">Product ID:</label>
+                <input type="text" id="add-product-id" name="product-id" required><br>
+
+                <label for="add-product-name">Product name:</label>
+                <input type="text" id="add-product-name" name="product-name" required><br>
+
+                <label for="add-product-description">Description:</label>
+                <input type="text" id="add-product-description" name="product-description" required><br>
+
+                <label for="add-product-unit-price">Unit Price:</label>
+                <input type="number" id="add-product-unit-price" name="product-unit-price" required><br>
+
+                <label for="add-product-weight">Weight:</label>
+                <input type="number" id="add-product-weight" name="product-weight" step="any" required><br>
+
+                <label for="add-product-expiration-date">Expiration Date:</label>
+                <input type="date" id="add-product-expiration-date" name="product-expiration-date" required><br>
+
+                <button type="submit">Add</button>
+            </form>
+
+            <h3>Delete Product</h3>
+            <form id="delete-product-form">
+                <label for="delete-product-id">Product ID:</label>
+                <input type="text" id="delete-product-id" name="product-id" required><br>
+
+                <button type="submit">Delete</button>
+            </form>
+        </div>
+
+        <!-- Requests Section -->
+        <div id="requests-section" class="section">
+            <h2>Requests</h2>
+            <ul id="requests-list">
+                <!-- Requests will be shown here -->
+            </ul>
+
+            <h3>Send Request</h3>
+            <form id="send-request-form">
+                <label for="node-id-request">Node ID:</label>
+                <input type="text" id="node-id-request" name="node" required><br>
+
+                <label for="product-request">Product:</label>
+                <input type="text" id="product-request" name="product" required><br>
+
+                <label for="stock-request">Quantity:</label>
+                <input type="number" id="stock-request" name="stock" required><br>
+
+                <button type="submit">Send</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            $('.menu-link').click(function(e) {
+                e.preventDefault();
+                $('.section').removeClass('active');
+                $('#' + $(this).data('section')).addClass('active');
+            });
+        });
+    </script>
 </body>
 </html>
