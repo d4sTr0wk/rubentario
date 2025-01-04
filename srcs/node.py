@@ -12,8 +12,6 @@ import psycopg2
 from psycopg2 import errors
 from datetime import datetime
 
-cursor = None
-    
 app = Flask(__name__)
 app.secret_key = "vc0910$$"
 
@@ -29,6 +27,22 @@ class Node:
 		self.id = id
 		self.url = url
 		self.port = port
+
+		# Database connection
+		try:
+			self.db_conn = psycopg2.connect(
+				dbname = self.id + "_warehouse",
+				user = "rubentario",
+				password = "rubentario",
+				host=self.url,
+				port="5432"
+			)
+			self.cursor = self.db_conn.cursor()
+			print("Database connection initialized.")
+		except Exception as e:
+			print(f"Error connection to the database: {e}")
+			sys.exit(1)
+
 		# Requests received from other selfs
 		self.requests_queue = requests_queue
 		try:
@@ -46,7 +60,7 @@ class Node:
 		self.publish_channel = self.publish_connection.channel()
 
 		# Notifications for incoming requests
-		cursor.execute('''
+		self.cursor.execute('''
 			CREATE TABLE IF NOT EXISTS requests (
 				requester_node VARCHAR(255) NOT NULL,
 				product_id VARCHAR(50) NOT NULL,
@@ -54,15 +68,15 @@ class Node:
 			);
 		''')
 		self.requests_cache = []
-		cursor.execute("SELECT * FROM requests;")
-		if cursor.rowcount > 0:
-			rows = cursor.fetchall()
+		self.cursor.execute("SELECT * FROM requests;")
+		if self.cursor.rowcount > 0:
+			rows = self.cursor.fetchall()
 			self.requests_cache = [
 				{"requester_node": str(r[0]), "product_id": str(r[1]), "stock": r[2]} for r in rows
 			]
 
 		# PRODUCTS
-		cursor.execute('''
+		self.cursor.execute('''
 			CREATE TABLE IF NOT EXISTS products (
 				id VARCHAR(50) PRIMARY KEY,
 				name VARCHAR(150) NOT NULL,
@@ -72,16 +86,16 @@ class Node:
 				expiration_date DATE
 			);
 		''')
-		self.products_cache = [{}]
-		cursor.execute("SELECT * FROM products;")
-		if cursor.rowcount > 0:
-			rows = cursor.fetchall()
+		self.products_cache = []
+		self.cursor.execute("SELECT * FROM products;")
+		if self.cursor.rowcount > 0:
+			rows = self.cursor.fetchall()
 			self.products_cache = [
 					{"id": str(r[0]), "name": str(r[1]), "description": str(r[2]), "unit_price": r[3], "weight": r[4], "expiration_date": str(r[5])} for r in rows
 			]
 
 		# INVENTORY
-		cursor.execute('''
+		self.cursor.execute('''
 			CREATE TABLE IF NOT EXISTS inventory (
 				product_id VARCHAR (50) PRIMARY KEY,
 				stock INTEGER NOT NULL,
@@ -89,13 +103,13 @@ class Node:
 			);
 		''')
 		self.inventory_cache = {}
-		cursor.execute("SELECT * FROM inventory;")
-		if cursor.rowcount > 0:
-			rows = cursor.fetchall()
+		self.cursor.execute("SELECT * FROM inventory;")
+		if self.cursor.rowcount > 0:
+			rows = self.cursor.fetchall()
 			self.inventory_cache.update({str(row[0]): row[1] for row in rows})
 
 		# TRANSACTIONS
-		cursor.execute('''
+		self.cursor.execute('''
 			CREATE TABLE IF NOT EXISTS transactions (
 				sender VARCHAR(100) NOT NULL,
 				receiver VARCHAR(100) NOT NULL,
@@ -104,15 +118,15 @@ class Node:
 				date TIMESTAMP NOT NULL
 			);
 		''');
-		self.transactions_cache = [{}]
-		cursor.execute("SELECT * FROM transactions;")
-		if cursor.rowcount > 0:
-			transactions = cursor.fetchall()
+		self.transactions_cache = []
+		self.cursor.execute("SELECT * FROM transactions;")
+		if self.cursor.rowcount > 0:
+			transactions = self.cursor.fetchall()
 			self.transactions_cache = [
 				{"sender": str(t[0]), "receiver": str(t[1]), "product_id": str(t[2]), "stock": t[3], "date": str(t[4])} for t in transactions
 			]
 
-		db_conn.commit()
+		self.db_conn.commit()
 
 
 	def handle_request(self, ch, method, properties, body):
@@ -247,39 +261,39 @@ def buy_item():
 		return jsonify({"error": "Missing required fields"}), 400
 
 	try:
-		cursor.execute("SELECT * FROM products WHERE id = %s;", (product_id,))
-		if cursor.rowcount == 0:
+		node.cursor.execute("SELECT * FROM products WHERE id = %s;", (product_id,))
+		if node.cursor.rowcount == 0:
 			return jsonify({"error": f"No product found with id {product_id}"}), 404
 
-		cursor.execute("SELECT * FROM inventory WHERE product_id = %s;", (product_id,))
-		if cursor.rowcount == 0:
-			cursor.execute("INSERT INTO inventory VALUES (%s, %s);", (product_id, stock))
+		node.cursor.execute("SELECT * FROM inventory WHERE product_id = %s;", (product_id,))
+		if node.cursor.rowcount == 0:
+			node.cursor.execute("INSERT INTO inventory VALUES (%s, %s);", (product_id, stock))
 		else:
-			cursor.execute("UPDATE inventory SET stock = stock + %s WHERE product_id = %s;", (stock, product_id))
+			node.cursor.execute("UPDATE inventory SET stock = stock + %s WHERE product_id = %s;", (stock, product_id))
 
-		cursor.execute("INSERT INTO transactions VALUES (%s, %s, %s, %s, NOW())", (seller, node.id, product_id, stock))
+		node.cursor.execute("INSERT INTO transactions VALUES (%s, %s, %s, %s, NOW())", (seller, node.id, product_id, stock))
 
-		db_conn.commit()
+		node.db_conn.commit()
 
 		with node.lock:
-			cursor.execute("SELECT * FROM transactions ORDER BY date DESC LIMIT 1;")
-			row = cursor.fetchone()
+			node.cursor.execute("SELECT * FROM transactions ORDER BY date DESC LIMIT 1;")
+			row = node.cursor.fetchone()
 			if row is not None:
 				node.transactions_cache.append(
-				{"sender": str(row[0]), "receiver": str(row[1]), "product_id": str(row[2]), "stock": row[3], "date":str(row[4])}
+					{"sender": str(row[0]), "receiver": str(row[1]), "product_id": str(row[2]), "stock": row[3], "date":str(row[4])}
 				)
 
 			if str(product_id) in node.inventory_cache:
 				node.inventory_cache[str(product_id)] += stock
 			else:
-				cursor.execute("SELECT stock FROM inventory WHERE product_id = %s;", (product_id,))
-				result = cursor.fetchone()
+				node.cursor.execute("SELECT stock FROM inventory WHERE product_id = %s;", (product_id,))
+				result = node.cursor.fetchone()
 				if result:
 					node.inventory_cache[str(product_id)] = result[0]
 
 		return jsonify({"message": f"Added {stock} units of {product_id} to inventory from {seller}"}), 200
 	except Exception as e:
-		db_conn.rollback()
+		node.db_conn.rollback()
 		return jsonify({"error": f"Intern unexpected server error buying: {e}"}), 500
 
 
@@ -299,29 +313,29 @@ def sell_item():
 		return jsonify({"error": "Missing required fields"}), 400
 
 	try:
-		cursor.execute("SELECT * FROM products WHERE id = %s;", (product_id,))
-		if cursor.rowcount == 0:
+		node.cursor.execute("SELECT * FROM products WHERE id = %s;", (product_id,))
+		if node.cursor.rowcount == 0:
 			return jsonify({"error": f"No product found with id {product_id}"}), 404
 
-		cursor.execute("SELECT stock FROM inventory WHERE product_id = %s;", (product_id,))
-		result = cursor.fetchone()
+		node.cursor.execute("SELECT stock FROM inventory WHERE product_id = %s;", (product_id,))
+		result = node.cursor.fetchone()
 		if result:
 			product_stock = result[0]
 			if stock > product_stock:
-				db_conn.rollback()
+				node.db_conn.rollback()
 				return jsonify({"error": f"Not enough stock for {product_id}"}), 400
 			elif stock == product_stock:
-				cursor.execute("DELETE FROM inventory WHERE product_id = %s;", (product_id,))
+				node.cursor.execute("DELETE FROM inventory WHERE product_id = %s;", (product_id,))
 			else:
-				cursor.execute("UPDATE inventory SET stock = stock - %s WHERE product_id = %s;", (stock, product_id))
+				node.cursor.execute("UPDATE inventory SET stock = stock - %s WHERE product_id = %s;", (stock, product_id))
 
-			cursor.execute("INSERT INTO transactions VALUES (%s, %s, %s, %s, NOW())", (node.id, client, product_id, stock))
+			node.cursor.execute("INSERT INTO transactions VALUES (%s, %s, %s, %s, NOW())", (node.id, client, product_id, stock))
 		
-			db_conn.commit()
+			node.db_conn.commit()
 
 			with node.lock:
-				cursor.execute("SELECT * FROM transactions ORDER BY date DESC LIMIT 1;")
-				row = cursor.fetchone()
+				node.cursor.execute("SELECT * FROM transactions ORDER BY date DESC LIMIT 1;")
+				row = node.cursor.fetchone()
 				if row is not None:
 					node.transactions_cache.append(
 					{"sender": str(row[0]), "receiver": str(row[1]), "product_id": str(row[2]), "stock": row[3], "date":str(row[4])}
@@ -336,11 +350,11 @@ def sell_item():
 
 			return jsonify({"message": f"Sold {stock} units of {product_id} to inventory to {client}"}), 200
 		else:
-			db_conn.rollback()
+			node.db_conn.rollback()
 			return jsonify({"error": f"Product {product_id} not found in inventory table"}), 404
 
 	except Exception as e:
-		db_conn.rollback()
+		node.db_conn.rollback()
 		return jsonify({"error": f"Intern unexpected server error selling: {e}"}), 500
 
 
@@ -411,18 +425,18 @@ def add_product():
 		return jsonify({"error": "Missing required fields"}), 400
 
 	try:
-		cursor.execute("INSERT INTO products (id, name, description, unit_price, weight, expiration_date) VALUES (%s, %s, %s, %s, %s, %s);", (id, name, description, unit_price, weight, expiration_date))
-		db_conn.commit()
+		node.cursor.execute("INSERT INTO products (id, name, description, unit_price, weight, expiration_date) VALUES (%s, %s, %s, %s, %s, %s);", (id, name, description, unit_price, weight, expiration_date))
+		node.db_conn.commit()
 
 		with node.lock:
 			node.products_cache.append({'id': id, 'name': name, 'description': description, 'unit_price': unit_price, 'weight': weight, 'expiration_date': str(expiration_date)})
 
 		return jsonify({"message": f"New product ({name}) added"}), 200
 	except errors.UniqueViolation:
-		db_conn.rollback()
+		node.db_conn.rollback()
 		return jsonify({"error": f"ID {id} product already exists!"}), 409
 	except Exception as e:
-		db_conn.rollback()
+		node.db_conn.rollback()
 		return jsonify({"error": f"Intern unexpected server error adding: {e}"}), 500
 
 @app.route("/delete_product", methods=["POST"])
@@ -436,9 +450,9 @@ def delete_product():
 		return jsonify({"error": "Missing required field"}), 400
 
 	try:
-		cursor.execute("DELETE FROM inventory WHERE product_id = %s;", (id,))
-		cursor.execute("DELETE FROM products WHERE id = %s;", (id,))
-		db_conn.commit()
+		node.cursor.execute("DELETE FROM inventory WHERE product_id = %s;", (id,))
+		node.cursor.execute("DELETE FROM products WHERE id = %s;", (id,))
+		node.db_conn.commit()
 
 		with node.lock:
 			node.inventory_cache.pop(id)
@@ -447,12 +461,12 @@ def delete_product():
 					node.products_cache.pop(i)
 					break
 
-		if cursor.rowcount == 0:
+		if node.cursor.rowcount == 0:
 			return jsonify({"error": f"No product found with id {id}"}), 404
 
 		return jsonify({"message": f"Product {id} deleted from products table and inventory table"}), 200
 	except Exception as e:
-		db_conn.rollback()
+		node.db_conn.rollback()
 		return jsonify({"error": f"Intern unexpected server error deleting: {e}"}), 500
 
 @app.route("/stop", methods=["POST"])
@@ -462,8 +476,8 @@ def stop():
 		node.stop_listening()
 		if listening_thread and listening_thread.is_alive():
 			listening_thread.join()
-		cursor.close()
-		db_conn.close()
+		node.cursor.close()
+		node.db_conn.close()
 	except Exception as e:
 		print(f"Error closing features: {e}")
 	finally:
@@ -479,8 +493,8 @@ def signalHandler(sig, _):
 	except Exception as e:
 		print(f"Error closing features: {e}")
 	finally:
-		cursor.close()
-		db_conn.close()
+		node.cursor.close()
+		node.db_conn.close()
 		sys.exit(0)
 
 # Assign singal SIGNIT (Ctrl + ^C) to the function
@@ -493,22 +507,6 @@ if __name__ == "__main__":
 	parser.add_argument('--requests_queue', required=True, help='Requests Queue')
 	parser.add_argument('--port', required=True, help='Port for the node')
 	args = parser.parse_args()
-
-	# Database connection
-	try:
-		db_conn = psycopg2.connect(
-			dbname = args.id + "_warehouse",
-			user = "rubentario",
-			password = "rubentario",
-		    host="localhost",
-			port="5432"
-		)
-
-		cursor = db_conn.cursor()
-		print("Database connection initialized.")
-	except Exception as e:
-		print(f"Error connection to the database: {e}")
-		sys.exit(1)
 
 	# Create the node object
 	node = Node(id=args.id, requests_queue=args.requests_queue, url='localhost', port=args.port) 
