@@ -7,7 +7,12 @@ echo "Starting and enabling PostgreSQL service . . ."
 sudo systemctl start postgresql
 sudo systemctl enable postgresql
 
-DB_NAME="warehouse"
+if [ "$#" -ne 1 ]; then
+	echo "Usage: ./postgresql.sh <db_name>"
+	exit 1
+fi
+
+DB_NAME="$1_warehouse"
 DB_USER="rubentario"
 DB_PASS="rubentario"
 

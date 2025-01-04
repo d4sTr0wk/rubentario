@@ -12,17 +12,7 @@ import psycopg2
 from psycopg2 import errors
 from datetime import datetime
 
-
-# Database connection
-db_conn = psycopg2.connect(
-    dbname = "warehouse",
-    user = "rubentario",
-    password = "rubentario",
-    host="localhost",
-    port="5432"
-)
-
-cursor = db_conn.cursor()
+cursor = None
     
 app = Flask(__name__)
 app.secret_key = "vc0910$$"
@@ -503,6 +493,22 @@ if __name__ == "__main__":
 	parser.add_argument('--requests_queue', required=True, help='Requests Queue')
 	parser.add_argument('--port', required=True, help='Port for the node')
 	args = parser.parse_args()
+
+	# Database connection
+	try:
+		db_conn = psycopg2.connect(
+			dbname = args.id + "_warehouse",
+			user = "rubentario",
+			password = "rubentario",
+		    host="localhost",
+			port="5432"
+		)
+
+		cursor = db_conn.cursor()
+		print("Database connection initialized.")
+	except Exception as e:
+		print(f"Error connection to the database: {e}")
+		sys.exit(1)
 
 	# Create the node object
 	node = Node(id=args.id, requests_queue=args.requests_queue, url='localhost', port=args.port) 

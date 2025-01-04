@@ -24,6 +24,9 @@ fi
 
 REQUESTS_QUEUE="${NODE_ID}_requests"
 
+echo "Creating database . . ."
+./postgresql.sh "${NODE_ID}"
+
 # Check for available port (starting from 5000)
 PORT=5000
 while lsof -i:$PORT > /dev/null; do
