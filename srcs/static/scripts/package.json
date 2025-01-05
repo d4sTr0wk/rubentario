@@ -1,5 +1,8 @@
 {
   "devDependencies": {
     "@types/jquery": "^3.5.32"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.1"
   }
 }

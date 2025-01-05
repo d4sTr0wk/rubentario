@@ -22,8 +22,6 @@ if [[ ! "$NODE_ID" =~ ^[a-zA-Z0-9_]+$ ]]; then
 	exit 1
 fi
 
-REQUESTS_QUEUE="${NODE_ID}_requests"
-
 echo "Creating database . . ."
 ./postgresql.sh "${NODE_ID}"
 
@@ -37,4 +35,4 @@ echo "Starting node $NODE_ID on port $PORT with queues $REQUESTS_QUEUE"
 
 echo "Running Rubentario server . . ."
 # Run the Python node script with dynamic parameters
-python3 srcs/node.py --id "$NODE_ID" --requests_queue "$REQUESTS_QUEUE" --port "$PORT"
+python3 srcs/node.py --id "$NODE_ID" --port "$PORT"

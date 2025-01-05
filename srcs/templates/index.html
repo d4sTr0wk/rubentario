@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ node_id }} Management</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+	<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
 	<link rel="stylesheet" href="../static/styles/style.css">
 </head>
 <body>
@@ -30,12 +30,17 @@
 			<tbody></tbody>
 		</table>
 
-        <div class="list-section">
-            <h2>Requests</h2>
-            <ul id="requests-list">
-                <!-- Requests will be shown here -->
-            </ul>
-        </div>
+        <h2>Requests</h2>
+		<table border="1" id="requestsTable">
+			<thead>
+				<tr>
+					<th>Requester Node</th>
+					<th>Product ID</th>
+					<th>Stock</th>
+				</tr>
+			</thead>
+			<tbody></tbody>
+		</table>
 
 		<h2>Products</h2>
 		<table border="1" id="productsTable">
@@ -157,23 +162,42 @@
             <h2>Send Request</h2>
             <form id="send-request-form">
                 <div class="form-control">
-                    <label for="node-id-request">Node ID:</label>
-                    <input type="text" id="node-id-request" name="node" required>
+                    <label for="destination-node-request">Destinatio Node:</label>
+                    <input type="text" id="destination-node-request" name="destination-node" required>
                 </div>
                 <div class="form-control">
-                    <label for="product-request">Product:</label>
-                    <input type="text" id="product-request" name="product" required>
+                    <label for="product-id-request">Product ID:</label>
+                    <input type="text" id="product-id-request" name="product-id" required>
                 </div>
                 <div class="form-control">
-                    <label for="stock-request">Quantity:</label>
+                    <label for="stock-request">Stock:</label>
                     <input type="number" id="stock-request" name="stock" required>
+                </div>
+                <button type="submit" class="btn">Send</button>
+            </form>
+        </div>
+
+		<div class="card">
+            <h2>Send Query</h2>
+            <form id="send-query-form">
+                <div class="form-control">
+                    <label for="destination-node-query">Destination Node:</label>
+                    <input type="text" id="destination-node-query" name="destination-node" required>
+                </div>
+                <div class="form-control">
+                    <label for="product-id-query">Product ID:</label>
+                    <input type="text" id="product-id-query" name="product-id" required>
+                </div>
+                <div class="form-control">
+                    <label for="stock-query">Stock:</label>
+                    <input type="number" id="stock-query" name="stock" required>
                 </div>
                 <button type="submit" class="btn">Send</button>
             </form>
         </div>
     </div>
 
-    <script src="../static/scripts/main.js"></script>
+    <script type="module" src="../static/scripts/dist/main.js"></script>
 </body>
 </html>
 
