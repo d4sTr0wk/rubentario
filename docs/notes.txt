@@ -7,6 +7,7 @@ Base de datos:
 
 30/12/24 [máximo]: send_request imprime en el log del servidor los posibles errores en la transmisión del request a través de RabbitMQ pero no lo reporta al usuario en la web.
 2/1/2025 [máximo]: ahora mismo para imprimir las transacciones cada vez que se hace una nueva se actualiza en el HTML leyendo todas las transacciones. Si la tabla crece considerablemente el nodo dedicaría gran cómputo de tiempo en reportar todas las transacciones cuando a lo mejor solo tiene que entregar unas pocas. Además, no hay forma de limpiar las transacciones salvo borrar manualmente la tabla en PostgreSQL.
-3/1/2024 [máximo]: - cantidad mínima alerta en los productos del inventario.
+3/1/2024 [máximo]: - cantidad mínima alerta en los productos del inventario. ✅
 				   - Crear usuario sin permisos de añadir productos por cada almacén.
-				   - la primera adición a la lista de productos provoca un diccionario vacío en la primera posición.
+				   - la primera adición a la lista de productos provoca un diccionario vacío en la primera posición. ✅
+5/1/2024 [máximo]: - podría ser interesante poder modificar productos por su ID y no tener que eliminarlos y volverlos a añadir

@@ -9,6 +9,7 @@ import sys
 from pika.spec import methods
 import requests
 import psycopg2
+import time
 from psycopg2 import errors
 from datetime import datetime
 
@@ -81,6 +82,7 @@ class Node:
 				id VARCHAR(50) PRIMARY KEY,
 				name VARCHAR(150) NOT NULL,
 				description TEXT,
+				minimum_stock INTEGER NOT NULL,
 				unit_price FLOAT,
 				weight FLOAT,
 				expiration_date DATE
@@ -91,7 +93,7 @@ class Node:
 		if self.cursor.rowcount > 0:
 			rows = self.cursor.fetchall()
 			self.products_cache = [
-					{"id": str(r[0]), "name": str(r[1]), "description": str(r[2]), "unit_price": r[3], "weight": r[4], "expiration_date": str(r[5])} for r in rows
+					{"id": str(r[0]), "name": str(r[1]), "description": str(r[2]), "minimum_stock": r[3], "unit_price": r[4], "weight": r[5], "expiration_date": str(r[6])} for r in rows
 			]
 
 		# INVENTORY
@@ -263,7 +265,7 @@ def buy_item():
 	try:
 		node.cursor.execute("SELECT * FROM products WHERE id = %s;", (product_id,))
 		if node.cursor.rowcount == 0:
-			return jsonify({"error": f"No product found with id {product_id}"}), 404
+			return jsonify({"error": f"No product found with id {product_id}"}), 405
 
 		node.cursor.execute("SELECT * FROM inventory WHERE product_id = %s;", (product_id,))
 		if node.cursor.rowcount == 0:
@@ -291,7 +293,17 @@ def buy_item():
 				if result:
 					node.inventory_cache[str(product_id)] = result[0]
 
-		return jsonify({"message": f"Added {stock} units of {product_id} to inventory from {seller}"}), 200
+		message = f"Added {stock} units of {product_id} to inventory from {seller}."
+
+		node.cursor.execute("SELECT minimum_stock FROM products WHERE id = %s;", (product_id,))
+		result = node.cursor.fetchone()
+		print(result[0])
+		if result:
+			minimum_stock = result[0];
+			if minimum_stock >= node.inventory_cache[str(product_id)]:
+				message += f"\nWARNING: {product_id} is at minimum stock levels!"
+
+		return jsonify({"message": message}), 200
 	except Exception as e:
 		node.db_conn.rollback()
 		return jsonify({"error": f"Intern unexpected server error buying: {e}"}), 500
@@ -315,7 +327,7 @@ def sell_item():
 	try:
 		node.cursor.execute("SELECT * FROM products WHERE id = %s;", (product_id,))
 		if node.cursor.rowcount == 0:
-			return jsonify({"error": f"No product found with id {product_id}"}), 404
+			return jsonify({"error": f"No product found with id {product_id}"}), 405
 
 		node.cursor.execute("SELECT stock FROM inventory WHERE product_id = %s;", (product_id,))
 		result = node.cursor.fetchone()
@@ -348,7 +360,16 @@ def sell_item():
 				else:
 					pass
 
-			return jsonify({"message": f"Sold {stock} units of {product_id} to inventory to {client}"}), 200
+			message = f"Sold {stock} units of {product_id} to inventory to {client}."
+
+			node.cursor.execute("SELECT minimum_stock FROM products WHERE id = %s;", (product_id,))
+			result = node.cursor.fetchone()
+			if result:
+				minimum_stock = result[0];
+				if minimum_stock >= node.inventory_cache[str(product_id)]:
+					message += f"\nWARNING: {product_id} is at minimum stock levels!"
+
+			return jsonify({"message": message}), 200
 		else:
 			node.db_conn.rollback()
 			return jsonify({"error": f"Product {product_id} not found in inventory table"}), 404
@@ -356,30 +377,6 @@ def sell_item():
 	except Exception as e:
 		node.db_conn.rollback()
 		return jsonify({"error": f"Intern unexpected server error selling: {e}"}), 500
-
-
-@app.route("/api/inventory", methods=["GET"])
-def get_inventory():
-	print(f"Inventory: { node.inventory_cache }")
-	return jsonify(node.inventory_cache), 200
-
-
-@app.route("/api/products", methods=["GET"])
-def get_products():
-	print(f"Products: { node.products_cache }")
-	return jsonify(node.products_cache), 200
-
-@app.route("/api/requests", methods=["GET"])
-def get_requests():
-	with node.lock:
-		print(f"Current requests in node{id(node)}: {node.requests_cache}")
-		return jsonify(node.requests_cache), 200
-
-
-@app.route("/api/transactions", methods=["GET"])
-def get_transactions():
-	print(f"Transactions: { node.transactions_cache }")
-	return jsonify(node.transactions_cache), 200
 
 
 @app.route("/send_request", methods=["POST"])
@@ -417,19 +414,20 @@ def add_product():
 	id = data["id"]
 	name = data["name"]
 	description = data["description"]
+	minimum_stock = data["minimum_stock"]
 	unit_price = float(data["unit_price"])
 	weight = float(data["weight"])
 	expiration_date = datetime.strptime(data["expiration_date"], '%Y-%m-%d')
 
-	if not all([id, name, description, unit_price, weight, expiration_date]):
+	if not all([id, name, description, minimum_stock, unit_price, weight, expiration_date]):
 		return jsonify({"error": "Missing required fields"}), 400
 
 	try:
-		node.cursor.execute("INSERT INTO products (id, name, description, unit_price, weight, expiration_date) VALUES (%s, %s, %s, %s, %s, %s);", (id, name, description, unit_price, weight, expiration_date))
+		node.cursor.execute("INSERT INTO products (id, name, description, minimum_stock, unit_price, weight, expiration_date) VALUES (%s, %s, %s, %s, %s, %s, %s);", (id, name, description, minimum_stock, unit_price, weight, expiration_date))
 		node.db_conn.commit()
 
 		with node.lock:
-			node.products_cache.append({'id': id, 'name': name, 'description': description, 'unit_price': unit_price, 'weight': weight, 'expiration_date': str(expiration_date)})
+			node.products_cache.append({'id': id, 'name': name, 'description': description, 'minimum_stock': minimum_stock, 'unit_price': unit_price, 'weight': weight, 'expiration_date': str(expiration_date)})
 
 		return jsonify({"message": f"New product ({name}) added"}), 200
 	except errors.UniqueViolation:
@@ -438,6 +436,7 @@ def add_product():
 	except Exception as e:
 		node.db_conn.rollback()
 		return jsonify({"error": f"Intern unexpected server error adding: {e}"}), 500
+
 
 @app.route("/delete_product", methods=["POST"])
 def delete_product():
@@ -468,6 +467,41 @@ def delete_product():
 	except Exception as e:
 		node.db_conn.rollback()
 		return jsonify({"error": f"Intern unexpected server error deleting: {e}"}), 500
+
+
+@app.route("/api/inventory", methods=["GET"])
+def get_inventory():
+	inventory = {product_id: stock for product_id, stock in node.inventory_cache.items()}
+	print(inventory)
+
+	if len(inventory) > 0:
+		for product in node.products_cache:
+			product_id = product.get("id")
+			minimum_stock = product.get("minimum_stock")
+			current_stock = node.inventory_cache.get(str(product_id))
+			
+			if minimum_stock is not None:
+				inventory[product_id] = (current_stock, minimum_stock)
+
+	return jsonify(inventory), 200
+
+@app.route("/api/products", methods=["GET"])
+def get_products():
+	print(f"Products: { node.products_cache }")
+	return jsonify(node.products_cache), 200
+
+@app.route("/api/requests", methods=["GET"])
+def get_requests():
+	with node.lock:
+		print(f"Current requests in node{id(node)}: {node.requests_cache}")
+		return jsonify(node.requests_cache), 200
+
+
+@app.route("/api/transactions", methods=["GET"])
+def get_transactions():
+	print(f"Transactions: { node.transactions_cache }")
+	return jsonify(node.transactions_cache), 200
+
 
 @app.route("/stop", methods=["POST"])
 def stop():

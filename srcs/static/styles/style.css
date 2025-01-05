@@ -205,3 +205,8 @@ tfoot td {
 #inventory-list li:hover, #requests-list li:hover {
     transform: scale(1.02);
 }
+
+.low-stock {
+	background-color: #FD3B3B;
+	color: white;
+}

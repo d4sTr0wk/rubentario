@@ -44,6 +44,7 @@
 					<th>ID</th>
 					<th>Name</th>
 					<th>Description</th>
+					<th>Minimum Stock</th>
 					<th>Unit Price</th>
 					<th>Weight</th>
 					<th>Expiration Date</th>
@@ -82,8 +83,12 @@
                     <input type="text" id="add-product-description" name="product-description" required>
                 </div>
 				<div class="form-control">
+					<label for="add-product-minimum-stock">Minimum Stock:</label>
+					<input type="number" id="add-product-minimum-stock" name="product-minimum-stock" required>
+				</div>
+				<div class="form-control">
                     <label for="add-product-unit-price">Unit Price:</label>
-                    <input type="number" id="add-product-unit-price" name="product-unit-price" required>
+                    <input type="number" id="add-product-unit-price" name="product-unit-price" step="any" required>
                 </div>
 				<div class="form-control">
                     <label for="add-product-weight">Weight:</label>

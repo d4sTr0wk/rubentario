@@ -28,8 +28,11 @@ function renderInventoryTable(inventory) {
         return;
     }
     for (const product_id in inventory) {
-        const stock = inventory[product_id];
+        const [stock, minimum_stock] = inventory[product_id];
         const row = document.createElement('tr');
+        if (stock <= minimum_stock) {
+            row.classList.add('low-stock');
+        }
         row.innerHTML = `
 			<td>${product_id}</td>
 			<td>${stock}</td>
@@ -73,6 +76,7 @@ function renderProductsTable(products) {
             <td>${product.id}</td>
             <td>${product.name}</td>
             <td>${product.description}</td>
+			<td>${product.minimum_stock}</td>
             <td>${product.unit_price}</td>
 			<td>${product.weight}</td>
             <td>${new Date(product.expiration_date).toLocaleDateString()}</td>
@@ -150,6 +154,7 @@ $('#add-product-form').on('submit', function (e) {
     const name = $('#add-product-name').val();
     const description = $('#add-product-description').val();
     //const description = description_input === '' ? null : description_input;
+    const minimum_stock = parseInt($('#add-product-minimum-stock').val());
     const unit_price = parseFloat($('#add-product-unit-price').val());
     //const unit_price = unit_price_input === '' ? null: parseFloat(unit_price_input);
     const weight = parseFloat($('#add-product-weight').val());
@@ -160,6 +165,7 @@ $('#add-product-form').on('submit', function (e) {
         id,
         name,
         description,
+        minimum_stock,
         unit_price,
         weight,
         expiration_date
@@ -257,7 +263,7 @@ $('#send-request-form').on('submit', function (e) {
         }
     });
 });
-// Initial call to update inventory and notifications (also in case web is refreshed)
+// Initial calls
 updateInventory();
 updateProducts();
 updateRequests();
