@@ -307,7 +307,7 @@ def new_query():
 	if not all([queryer_node, product_id, stock]):
 		return jsonify({"error": "Missing required fields"}), 400
 
-	node.cursor.execute("SELECT product_id, stock, products.minimum_stock FROM inventory JOIN products ON products.id = inventory.product_id WHERE id = %s;", (product_id,))
+	node.cursor.execute("SELECT product_id, stock, products.minimum_stock FROM inventory JOIN products ON products.id = inventory.product_id WHERE id = %s AND inventory.stock >= %s AND inventory.stock - %s > products.minimum_stock;", (product_id,stock,stock))
 
 	row = node.cursor.fetchone()
 	if node.cursor.rowcount == 0 or row is None:
