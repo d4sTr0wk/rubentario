@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session
+from flask_socketio import SocketIO, emit
 from threading import Lock
 import pika
 import json
@@ -16,6 +17,8 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = "vc0910$$"
 
+socketio = SocketIO(app)
+
 #Predifined users
 users = {
 	"admin": "admin",
@@ -23,7 +26,7 @@ users = {
 
 
 class Node:
-	def __init__(self, id, requests_queue, url, port):
+	def __init__(self, id, url, port):
 		self.lock = Lock()
 		self.id = id
 		self.url = url
@@ -45,17 +48,21 @@ class Node:
 			sys.exit(1)
 
 		# Requests received from other selfs
-		self.requests_queue = requests_queue
+		self.requests_queue = self.id + "_requests"
+		self.query_queue = self.id + "_queries"
 		try:
 			self.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
-			self.consume_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
+			self.request_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
+			self.query_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
 		except pika.exceptions.AMQPConnectionError as e:
 			print(f"Error connecting to RabbitMQ: {e}")
 			raise e
 
-		# Consume channel for listening to requests from other selfs
-		self.consume_channel = self.consume_connection.channel()
-		self.consume_channel.queue_declare(queue=self.requests_queue, durable=True)
+		self.request_channel = self.request_connection.channel()
+		self.request_channel.queue_declare(queue=self.requests_queue, durable=True)
+
+		self.query_channel = self.query_connection.channel()
+		self.query_channel.queue_declare(queue=self.query_queue, durable=True)
 
 		# Publish channel for sending requests and responses to other selfs
 		self.publish_channel = self.publish_connection.channel()
@@ -140,9 +147,44 @@ class Node:
 			if response.status_code == 200:
 				print("Message sended to server")
 			else:
-				print(f"Error sending the message: {response.status_code}")
+				print(f"Error sending request to server: {response.status_code}")
 		except Exception as e:
 			print(f"Error: {e}")
+
+	
+	def handle_query(self, ch, method, properties, body):
+		"""Handle a query received to return node's inventory"""
+		try:
+			headers = {'Content-Type': 'application/json'}
+			if properties.headers['message_type'] == 'query':
+				response = requests.post(f"http://{self.url}:{self.port}/new_query", headers=headers, data=body)
+			else:
+				response = requests.post(f"http://{self.url}:{self.port}/query_response", headers=headers, data=body)
+			if response.status_code == 200:
+				print("Message sended to server")
+			else:
+				print(f"Error sending query to server: {response.status_code}")
+		except Exception as e:
+			print(f"Error: {e}")
+
+	def send_query(self, destination_node, product_id, stock):
+		try:
+			# Reconnect with RabbitMQ
+			if not self.publish_connection or self.publish_connection.is_closed:
+				print("Closed connection. Trying to open it . . .")
+				self.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
+			if not self.publish_channel or self.publish_channel.is_closed:
+				print("Closed channel. Trying create new one . . .")
+				self.publish_channel = self.publish_connection.channel()
+
+			message = {"queryer_node": node.id, "product_id": product_id, "stock": stock}
+			self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message), properties=pika.BasicProperties(headers={'message_type': 'query'})) 
+		except pika.exceptions.AMQPChannelError as e:
+			print(f"Error in publish_channel: {e}")
+		except pika.exceptions.AMQPConnectionError as e:
+			print(f"Error in publish_connection: {e}")
+		except Exception as e:
+			print(f"Error sending request to {destination_node}: ({e})")
 
 
 	def send_request(self, destination_node, product_id, stock):
@@ -166,24 +208,34 @@ class Node:
 			print(f"Error sending request to {destination_node}: ({e})")
 
 
-	def start_listening(self):
+	def start_listening_requests(self):
 		# Start listening on the requests queue
 		try:
-			self.consume_channel.basic_consume(queue=self.requests_queue, on_message_callback=self.handle_request, auto_ack=True)
-			self.consume_channel.start_consuming()
+			self.request_channel.basic_consume(queue=self.requests_queue, on_message_callback=self.handle_request, auto_ack=True)
+			self.request_channel.start_consuming()
 		except Exception as e:
-			print(f"Error with consuming thread: {e}")
+			print(f"Error with requests consuming thread: {e}")
 		finally:
-			print("Consuming thread terminated")
+			print("Requests consuming thread terminated")
+
+	
+	def start_listening_queries(self):
+		try:
+			self.query_channel.basic_consume(queue=self.query_queue, on_message_callback=self.handle_query, auto_ack=True)
+			self.query_channel.start_consuming()
+		except Exception as e:
+			print(f"Error with queries consuming thread: {e}")
+		finally:
+			print("Queries consuming thread terminated")
 
 
 	def stop_listening(self):
 		# Stop listening safely
 		try:
-			if self.consume_channel and not self.consume_channel.is_closed:
-				self.consume_channel.close()
-			if self.consume_connection and not self.consume_connection.is_closed:
-				self.consume_connection.close()
+			if self.request_channel and not self.request_channel.is_closed:
+				self.request_channel.close()
+			if self.request_connection and not self.request_connection.is_closed:
+				self.request_connection.close()
 		except Exception as e:
 			print(f"Error closing RabbitMQ connections: {e}")
 
@@ -220,6 +272,67 @@ def logout():
 	return redirect(url_for("login"))
 
 
+@app.route("/query_response",methods=["POST"])
+def query_response():
+	data = request.json
+	if data is None:
+		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
+	if not data:
+		socketio.emit('query_response', data)
+		return jsonify({"error": "Product not on node"}), 400
+
+	product_id = data["product_id"]
+	stock = int(data["stock"])
+	minimum_stock = int(data["minimum_stock"])
+
+	if not all ([product_id, stock, minimum_stock]):
+		return jsonify({"error": "Missing required fields"}), 400
+
+	socketio.emit('query_response', data)
+
+	return jsonify({"message": "Response received!"}), 200
+
+"""Receive new query from listening thread and send data to queryer node"""
+@app.route("/new_query", methods=["POST"])
+def new_query():
+	data = request.json
+	if data is None:
+		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
+	queryer_node = data["queryer_node"]
+	product_id = data["product_id"]
+	stock = data["stock"]
+
+	if not all([queryer_node, product_id, stock]):
+		return jsonify({"error": "Missing required fields"}), 400
+
+	node.cursor.execute("SELECT product_id, stock, products.minimum_stock FROM inventory JOIN products ON products.id = inventory.product_id WHERE id = %s;", (product_id,))
+
+	row = node.cursor.fetchone()
+	if node.cursor.rowcount == 0 or row is None:
+		result = {}
+	else:
+		result = {
+				"product_id": str(row[0]),
+				"stock": row[1],
+				"minimum_stock": row[2]
+		}
+	print(result)
+	message_json = json.dumps(result)
+
+	node.publish_channel.basic_publish(
+			exchange='',
+			routing_key=queryer_node + '_queries',
+			body=message_json,
+			properties=pika.BasicProperties(headers={'message_type': 'response'})
+			)
+	if not result:
+		return jsonify({"error": "Product queried is not registered, consequently query is removed"}), 404
+
+	return jsonify({"message": "Query resolved successfully"}), 200
+
+
 """Receive new request from listening thread and update requests list"""
 @app.route("/new_request", methods=["POST"])
 def new_request():
@@ -236,13 +349,21 @@ def new_request():
 	if not all([requester_node, product_id, stock]):
 		return jsonify({"error": "Missing required fields"}), 400
 
+	node.cursor.execute("SELECT id FROM products WHERE id = %s;", (product_id,))
+	if node.cursor.rowcount == 0:
+		return jsonify({"error": "Product requested is not registered, consequently request is removed"}), 404
+
+	node.cursor.execute("INSERT INTO requests VALUES(%s, %s, %s);", (requester_node, product_id, stock))
+
+	node.db_conn.commit()
+
 	with node.lock:
 		node.requests_cache.append({
 			'requester_node': requester_node,
 			'product_id': product_id,
 			'stock': stock
 		})
-		print(f"New request added to node{id(node)} request list {id(node.requests_cache)}: Requester: {requester_node}, Product: {product_id}, Quantity; {stock}")
+		print(f"New request added to node{id(node)} request list {id(node.requests_cache)}; Requester: {requester_node}, Product: {product_id}, Quantity; {stock}")
 
 	return jsonify({"message": "Request added successfully"}), 200
 
@@ -297,7 +418,6 @@ def buy_item():
 
 		node.cursor.execute("SELECT minimum_stock FROM products WHERE id = %s;", (product_id,))
 		result = node.cursor.fetchone()
-		print(result[0])
 		if result:
 			minimum_stock = result[0];
 			if minimum_stock >= node.inventory_cache[str(product_id)]:
@@ -379,6 +499,28 @@ def sell_item():
 		return jsonify({"error": f"Intern unexpected server error selling: {e}"}), 500
 
 
+@app.route("/send_query", methods=["POST"])
+def send_query():
+	try:
+		data = request.json
+		if data is None:
+			return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
+		destination_node = data["destination_node"] + "_queries"
+		product_id = data["product_id"]
+		stock = int(data["stock"])
+
+		if not all ([destination_node, product_id, stock]):
+			  return jsonify({"error": "Missing required fields"}), 400
+		
+		print(f"Sending query to {destination_node} for {product_id} ({stock} units)")
+		node.send_query(destination_node=destination_node, product_id=product_id, stock=stock)
+
+		return jsonify({"message": f"Query for {product_id} sent to {destination_node} ({stock} units)"}), 200
+	except Exception as e:
+		return jsonify({"error": f"Query failed!"}), 400
+ 
+
 @app.route("/send_request", methods=["POST"])
 def send_request():
 	# Send a request to another node
@@ -396,6 +538,7 @@ def send_request():
 
 		print(f"Sending request to {destination_node} for {product} ({stock} units)")
 		node.send_request(destination_node=destination_node, product_id=product, stock=stock)
+
 		return jsonify({"message": f"Request for {product} sent to {destination_node} ({stock} units)"}), 200
 	except KeyError as e:
 		return jsonify({"error": f"Missing key in request data ({e})"}), 400
@@ -492,9 +635,8 @@ def get_products():
 
 @app.route("/api/requests", methods=["GET"])
 def get_requests():
-	with node.lock:
-		print(f"Current requests in node{id(node)}: {node.requests_cache}")
-		return jsonify(node.requests_cache), 200
+	print(f"Current requests in node{id(node)}: {node.requests_cache}")
+	return jsonify(node.requests_cache), 200
 
 
 @app.route("/api/transactions", methods=["GET"])
@@ -508,8 +650,8 @@ def stop():
 	# Stop the node
 	try:
 		node.stop_listening()
-		if listening_thread and listening_thread.is_alive():
-			listening_thread.join()
+		if requests_listening_thread and requests_listening_thread.is_alive():
+			requests_listening_thread.join()
 		node.cursor.close()
 		node.db_conn.close()
 	except Exception as e:
@@ -522,8 +664,8 @@ def signalHandler(sig, _):
 	print("Bye bye!")
 	try:
 		node.stop_listening()
-		if listening_thread and listening_thread.is_alive():
-			listening_thread.join()
+		if requests_listening_thread and requests_listening_thread.is_alive():
+			requests_listening_thread.join()
 	except Exception as e:
 		print(f"Error closing features: {e}")
 	finally:
@@ -538,15 +680,15 @@ signal.signal(signal.SIGTERM, signalHandler)
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--id', required=True, help='Node ID')
-	parser.add_argument('--requests_queue', required=True, help='Requests Queue')
 	parser.add_argument('--port', required=True, help='Port for the node')
 	args = parser.parse_args()
 
 	# Create the node object
-	node = Node(id=args.id, requests_queue=args.requests_queue, url='localhost', port=args.port) 
+	node = Node(id=args.id, url='localhost', port=args.port) 
 	print(f"Node initialized with ID: {id(node)}, requests queue ID: {id(node.requests_cache)}, PORT: {node.port}")
 
 	# Start listening in a thread
-	listening_thread = threading.Thread(target=node.start_listening, daemon=True).start()
+	requests_listening_thread = threading.Thread(target=node.start_listening_requests, daemon=True).start()
+	queries_listening_thread = threading.Thread(target=node.start_listening_queries, daemon=True).start()
 
 	app.run(debug=True, host="0.0.0.0", port=args.port)#, use_reloader=False)

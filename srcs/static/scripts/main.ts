@@ -1,3 +1,23 @@
+declare var io: any;
+
+interface QueryResponse {
+	product_id: string;
+	stock: number;
+	minimum_stock: number;
+}
+
+const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+const host = window.location.host;
+const socket = io(`${protocol}//${host}`);
+
+socket.on('query_response', (data: QueryResponse) => {
+	if (!data.product_id) {
+		alert("Product not found on node's inventory");
+	} else {
+		alert(`Query response received: ${JSON.stringify(data)}`)
+	}
+});
+
 // Type definition for product request
 interface ProductRequest {
   requester_node: string;
@@ -20,6 +40,13 @@ interface Product {
   expiration_date: string;
 }
 
+// Type definition for request
+interface Request {
+	requester_node: string;
+	product_id: string;
+	stock: number;
+}
+
 // Type definition for transaction
 interface Transaction {
 	sender: string;
@@ -32,7 +59,6 @@ interface Transaction {
 // INVENTORY
 async function fetchInventory(): Promise<InventoryDict> {
 	const response = await fetch('/api/inventory');
-	console.log(response);
 	if (!response.ok) {
 		throw new Error(`Inventory read table error: ${response.statusText}`);
 	}
@@ -93,7 +119,7 @@ function renderProductsTable(products: Product[]): void {
     tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
 
 	if (products.length === 0 || products.every(p => Object.keys(p).length === 0)) {
-        tbody.innerHTML = '<tr><td colspan="6">No products available</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7">No products available</td></tr>';
         return;
     }
 
@@ -123,15 +149,43 @@ async function updateProducts(): Promise<void> {
 
 
 // REQUESTS
-function updateRequests(): void {
-  $.get("/api/requests", function (data: ProductRequest[]) {
-    let requestList = '';
-    data.forEach(function (item) {
-      requestList += `<li>Requester Node: ${item.requester_node} | Product: ${item.product} | Quantity: ${item.stock}</li>`;
-    });
+async function fetchRequests(): Promise<Request[]> {
+	const response = await fetch('/api/requests');
+	if (!response.ok) {
+		throw new Error(`Product read table error: ${response.statusText}`);
+	}
+	return response.json();
+}
 
-    $('#requests-list').html(requestList);
-  });
+function renderRequestsTable(requests: Request[]): void {
+	const tbody = document.querySelector('#requestsTable tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
+
+	if (requests.length === 0 || requests.every(r => Object.keys(r).length === 0)) {
+        tbody.innerHTML = '<tr><td colspan="3">No requests available</td></tr>';
+        return;
+    }
+
+    requests.forEach((request) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${request.requester_node}</td>
+            <td>${request.product_id}</td>
+            <td>${request.stock}</td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+async function updateRequests(): Promise<void> {
+    try {
+        const request = await fetchRequests();
+        renderRequestsTable(request);
+    } catch (error) {
+        console.error('Error getting requests:', error);
+    }
 }
 
 
@@ -287,18 +341,41 @@ $('#sell-form').on('submit', function (e: JQuery.SubmitEvent) {
   });
 });
 
+
+// Handle sending a manual notification
+$('#send-query-form').on('submit', function (e: JQuery.SubmitEvent) {
+  e.preventDefault();
+  const destination_node = $('#destination-node-query').val() as string;
+  const product_id = $('#product-id-query').val() as string;
+  const stock = parseInt($('#stock-query').val() as string);
+
+  $.ajax({
+    url: '/send_query',
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({ destination_node, product_id, stock }),
+    success: function (response: { message: string }) {
+      alert(response.message);
+    },
+    error: function (response: JQuery.jqXHR) {
+      alert(response.responseJSON.error);
+    }
+  });
+});
+
+
 // Handle sending a manual notification
 $('#send-request-form').on('submit', function (e: JQuery.SubmitEvent) {
   e.preventDefault();
   const destination_node = $('#node-id-request').val() as string;
-  const product = $('#product-request').val() as string;
+  const product_id = $('#product-request').val() as string;
   const stock = parseInt($('#stock-request').val() as string);
 
   $.ajax({
     url: '/send_request',
     method: 'POST',
     contentType: 'application/json',
-    data: JSON.stringify({ destination_node, product, stock }),
+    data: JSON.stringify({ destination_node, product_id, stock }),
     success: function (response: { message: string }) {
       alert(response.message);
     },
