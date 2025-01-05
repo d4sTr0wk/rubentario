@@ -84,12 +84,20 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 chmod +x ./rubentario.sh
+chmod +x ./postgresql.sh
+chmod +x ./clean_tables.sh
 ./rubentario.sh <node-id>
 ```
 
 ## 📄 Documentación Técnica
 
-Toda la documentación, incluyendo diagramas y explicaciones detalladas, está disponible en la carpeta docs.
+El script `rubentario.sh` permite poner en marcha el servicio web perteneciente a uno de los nodos que simula un almacén.
+
+El script `postgresql.sh` es ejecutado de forma automática por `rubentario.sh` para crear la base de datos del nodo.
+
+El script `clean_tables.sh` permite borrar las tablas de la base de datos indicada para reiniciar los registros del almacén deseado.
+
+La documentación, incluyendo diagramas y explicaciones detalladas, está disponible en la carpeta docs.
 
 ## 📝 Licencia
 
