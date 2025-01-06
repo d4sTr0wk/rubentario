@@ -23,7 +23,6 @@ users = {
 	"admin": "admin",
 }
 
-
 class Node:
 	def __init__(self, id, url, port):
 		self.lock = Lock()
@@ -50,9 +49,8 @@ class Node:
 		self.requests_queue = self.id + "_requests"
 		self.query_queue = self.id + "_queries"
 		try:
-			self.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.url, heartbeat=60))
-			self.request_connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.url, heartbeat=60))
-			self.query_connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.url, heartbeat=60))
+			self.request_connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.url, heartbeat=3600))
+			self.query_connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.url, heartbeat=3600))
 		except pika.exceptions.AMQPConnectionError as e:
 			print(f"Error connecting to RabbitMQ: {e}")
 			raise e
@@ -63,14 +61,12 @@ class Node:
 		self.query_channel = self.query_connection.channel()
 		self.query_channel.queue_declare(queue=self.query_queue, durable=True)
 
-		# Publish channel for sending requests and responses to other selfs
-		self.publish_channel = self.publish_connection.channel()
-
 		# My requests
 		self.cursor.execute('''
 				CREATE TABLE IF NOT EXISTS my_requests (
 					uuid VARCHAR(36) NOT NULL,	
 					destination_node VARCHAR(255) NOT NULL,
+					ip_address inet,
 					product_id VARCHAR(50) NOT NULL,
 					stock INTEGER NOT NULL
 				);
@@ -80,7 +76,7 @@ class Node:
 		if self.cursor.rowcount > 0:
 			rows = self.cursor.fetchall()
 			self.my_requests_cache = [
-					{"uuid": str(r[0]), "destination_node": str(r[1]), "product_id": str(r[2]), "stock": r[3]} for r in rows
+					{"uuid": str(r[0]), "destination_node": str(r[1]), "ip_address": r[2], "product_id": str(r[3]), "stock": r[4]} for r in rows
 			]
 
 		# Notifications for incoming requests
@@ -88,6 +84,7 @@ class Node:
 			CREATE TABLE IF NOT EXISTS requests (
 				uuid VARCHAR(36) NOT NULL,
 				requester_node VARCHAR(255) NOT NULL,
+				ip_address inet,
 				product_id VARCHAR(50) NOT NULL,
 				stock INTEGER NOT NULL
 			);
@@ -97,7 +94,7 @@ class Node:
 		if self.cursor.rowcount > 0:
 			rows = self.cursor.fetchall()
 			self.requests_cache = [
-					{"uuid": str(r[0]), "requester_node": str(r[1]), "product_id": str(r[2]), "stock": r[3]} for r in rows
+					{"uuid": str(r[0]), "requester_node": str(r[1]), "ip_address": r[2], "product_id": str(r[3]), "stock": r[4]} for r in rows
 			]
 
 		# PRODUCTS
@@ -187,18 +184,18 @@ class Node:
 		except Exception as e:
 			print(f"Error: {e}")
 
-	def send_query(self, destination_node, product_id, stock):
+	def send_query(self, destination_node, ip_address, product_id, stock):
 		try:
-			# Reconnect with RabbitMQ
-			if not self.publish_connection or self.publish_connection.is_closed:
-				print("Closed connection. Trying to open it . . .")
-				self.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
-			if not self.publish_channel or self.publish_channel.is_closed:
-				print("Closed channel. Trying create new one . . .")
-				self.publish_channel = self.publish_connection.channel()
+			publish_connection = pika.BlockingConnection(pika.ConnectionParameters(ip_address, heartbeat = 1))
+			publish_channel = publish_connection.channel()
 
-			message = {"queryer_node": node.id, "product_id": product_id, "stock": stock}
-			self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message), properties=pika.BasicProperties(headers={'message_type': 'query'})) 
+			message = {"queryer_node": node.id, "queryer_ip": self.url, "product_id": product_id, "stock": stock}
+			publish_channel.basic_publish(
+					exchange='',
+					routing_key=destination_node, 
+					body=json.dumps(message),
+					properties=pika.BasicProperties(headers={'message_type': 'query'})) 
+
 		except pika.exceptions.AMQPChannelError as e:
 			print(f"Error in publish_channel: {e}")
 		except pika.exceptions.AMQPConnectionError as e:
@@ -207,18 +204,18 @@ class Node:
 			print(f"Error sending request to {destination_node}: ({e})")
 
 
-	def send_request(self, destination_node, product_id, stock):
+	def send_request(self, destination_node, ip_address, product_id, stock):
 		try:
 			# Reconnect with RabbitMQ
-			if not self.publish_connection or self.publish_connection.is_closed:
-				print("Closed connection. Trying to open it . . .")
-				self.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
-			if not self.publish_channel or self.publish_channel.is_closed:
-				print("Closed channel. Trying create new one . . .")
-				self.publish_channel = self.publish_connection.channel()
+			publish_connection = pika.BlockingConnection(pika.ConnectionParameters(ip_address, heartbeat = 1))
+			publish_channel = publish_connection.channel()
 
-			message = {"uuid": str(uuid.uuid4()), "requester_node": node.id, "product_id": product_id, "stock": stock}
-			self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message), properties=pika.BasicProperties(headers={'message_type': 'request'})) 
+			message = {"uuid": str(uuid.uuid4()), "requester_node": self.id, "ip_address": self.url, "product_id": product_id, "stock": stock}
+			publish_channel.basic_publish(
+					exchange='',
+					routing_key=destination_node,
+					body=json.dumps(message), 
+					properties=pika.BasicProperties(headers={'message_type': 'request'}))
 
 		except pika.exceptions.AMQPChannelError as e:
 			print(f"Error in publish_channel: {e}")
@@ -317,14 +314,16 @@ def query_response():
 @app.route("/new_query", methods=["POST"])
 def new_query():
 	data = request.json
+	print(data)
 	if data is None:
 		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
 
 	queryer_node = data["queryer_node"]
+	queryer_ip = data["queryer_ip"]
 	product_id = data["product_id"]
 	stock = data["stock"]
 
-	if not all([queryer_node, product_id, stock]):
+	if not all([queryer_node, queryer_ip, product_id, stock]):
 		return jsonify({"error": "Missing required fields"}), 400
 
 	node.cursor.execute("SELECT product_id, stock, products.minimum_stock FROM inventory JOIN products ON products.id = inventory.product_id WHERE id = %s AND inventory.stock >= %s AND inventory.stock - %s > products.minimum_stock;", (product_id,stock,stock))
@@ -338,10 +337,12 @@ def new_query():
 				"stock": row[1],
 				"minimum_stock": row[2]
 		}
-	print(result)
 	message_json = json.dumps(result)
 
-	node.publish_channel.basic_publish(
+	publish_connection = pika.BlockingConnection(pika.ConnectionParameters(queryer_ip, heartbeat = 1))
+	publish_channel = publish_connection.channel()
+
+	publish_channel.basic_publish(
 			exchange='',
 			routing_key=queryer_node + '_queries',
 			body=message_json,
@@ -365,14 +366,17 @@ def request_response():
 
 	uuid = data["uuid"]
 	destination_node = data["destination_node"]
+	respondent_ip = data["ip_address"]
 	product_id = data["product_id"]
 	stock = int(data["stock"])
 
-	if not all ([product_id, destination_node, stock]):
+	if not all ([product_id, destination_node, respondent_ip, stock]):
 		return jsonify({"error": "Missing required fields"}), 400
 	
 	try:
-		node.cursor.execute("INSERT INTO my_requests VALUES(%s, %s, %s, %s);", (uuid, destination_node, product_id, stock))
+		if respondent_ip == 'localhost':
+			respondent_ip = '127.0.0.1'
+		node.cursor.execute("INSERT INTO my_requests VALUES(%s, %s, %s, %s, %s);", (uuid, destination_node, respondent_ip, product_id, stock))
 
 		node.db_conn.commit()	
 	except Exception as e:
@@ -383,6 +387,7 @@ def request_response():
 		node.my_requests_cache.append({
 			'uuid': uuid,
 			'destination_node': destination_node,
+			'ip_address': respondent_ip,
 			'product_id': product_id,
 			'stock': stock
 		})
@@ -402,19 +407,33 @@ def new_request():
 	# JSON data exctraction
 	uuid = data["uuid"]
 	requester_node = data["requester_node"]
+	requester_ip = data["ip_address"]
 	product_id = data["product_id"]
 	stock = data["stock"]
 
 	# Validate all fields
-	if not all([requester_node, product_id, stock]):
+	if not all([requester_node, requester_ip, product_id, stock]):
 		return jsonify({"error": "Missing required fields"}), 400
 
 	node.cursor.execute("SELECT id FROM products WHERE id = %s;", (product_id,))
 	if node.cursor.rowcount == 0:
-		return jsonify({"error": "Product requested is not registered, consequently request is removed"}), 404
-	try:
-		node.cursor.execute("INSERT INTO requests VALUES(%s, %s, %s, %s);", (uuid, requester_node, product_id, stock))
+		publish_connection = pika.BlockingConnection(pika.ConnectionParameters(requester_ip, heartbeat = 1))
+		publish_channel = publish_connection.channel()
 
+		message = {}
+
+		publish_channel.basic_publish(
+				exchange='',
+				routing_key=requester_node + "_requests",
+				body=json.dumps(message),
+				properties=pika.BasicProperties(headers={'message_type': 'response'})
+		)
+		return jsonify({"error": "Product requested is not registered, consequently request is removed"}), 404
+
+	try:
+		if requester_ip == 'localhost':
+			requester_ip = '127.0.0.1'
+		node.cursor.execute("INSERT INTO requests VALUES(%s, %s, %s, %s, %s);", (uuid, requester_node, requester_ip, product_id, stock))
 		node.db_conn.commit()
 	except Exception as e:
 		node.db_conn.rollback()
@@ -424,6 +443,7 @@ def new_request():
 		node.requests_cache.append({
 			'uuid': uuid,
 			'requester_node': requester_node,
+			'ip_address': requester_ip,
 			'product_id': product_id,
 			'stock': stock
 		})
@@ -432,21 +452,16 @@ def new_request():
 	socketio.emit('new_request', data)
 
 	try:
-		# Reconnect with RabbitMQ
-		if not node.publish_connection or node.publish_connection.is_closed:
-			print("Closed connection. Trying to open it . . .")
-			node.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(node.url))
-		if not node.publish_channel or node.publish_channel.is_closed:
-			print("Closed channel. Trying create new one . . .")
-			node.publish_channel = node.publish_connection.channel()
+		publish_connection = pika.BlockingConnection(pika.ConnectionParameters(requester_ip, heartbeat = 1))
+		publish_channel = publish_connection.channel()
 
-		message = {"uuid": uuid, "destination_node": node.id, "product_id": product_id, "stock": stock}
-		node.publish_channel.basic_publish(
+		message = {"uuid": uuid, "destination_node": node.id, "ip_address": node.url, "product_id": product_id, "stock": stock}
+		publish_channel.basic_publish(
 				exchange='',
 				routing_key=requester_node + "_requests",
 				body=json.dumps(message),
 				properties=pika.BasicProperties(headers={'message_type': 'response'})
-		) 
+		)
 
 	except pika.exceptions.AMQPChannelError as e:
 		print(f"Error in publish_channel: {e}")
@@ -597,14 +612,15 @@ def send_query():
 			return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
 
 		destination_node = data["destination_node"] + "_queries"
+		ip_address = data["ip_address"]
 		product_id = data["product_id"]
 		stock = int(data["stock"])
 
-		if not all ([destination_node, product_id, stock]):
+		if not all ([destination_node, ip_address, product_id, stock]):
 			return jsonify({"error": "Missing required fields"}), 400
 
-		print(f"Sending query to {destination_node} for {product_id} ({stock} units)")
-		node.send_query(destination_node=destination_node, product_id=product_id, stock=stock)
+		print(f"Sending query to {destination_node} for {product_id} on {ip_address} ({stock} units)")
+		node.send_query(destination_node=destination_node, ip_address=ip_address, product_id=product_id, stock=stock)
 
 		return jsonify({"message": f"Query for {product_id} sent to {destination_node} ({stock} units)"}), 200
 	except Exception as e:
@@ -620,14 +636,15 @@ def send_request():
 			return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
 		
 		destination_node = data["destination_node"] + "_requests"
+		ip_address = data["ip_address"]
 		product = data["product_id"]
 		stock = int(data["stock"])
 
 		if not all ([destination_node, product, stock]):
 			return jsonify({"error": "Missing required fields"}), 400
 
-		print(f"Sending request to {destination_node} for {product} ({stock} units)")
-		node.send_request(destination_node=destination_node, product_id=product, stock=stock)
+		print(f"Sending request to {destination_node} for {product} on {ip_address} ({stock} units)")
+		node.send_request(destination_node=destination_node, ip_address=ip_address, product_id=product, stock=stock)
 
 		return jsonify({"message": f"Request for {product} sent to {destination_node} ({stock} units)"}), 200
 	except KeyError as e:

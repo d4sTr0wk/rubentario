@@ -114,14 +114,15 @@ function renderMyRequestsTable(requests) {
         return;
     tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
     if (requests.length === 0 || requests.every(r => Object.keys(r).length === 0)) {
-        tbody.innerHTML = '<tr><td colspan="4">No requests available</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5">No requests available</td></tr>';
         return;
     }
     requests.forEach((request) => {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${request.uuid}</td>
-            <td>${request.node}</td>
+            <td>${request.destination_node}</td>
+            <td>${request.ip_address}</td>
             <td>${request.product_id}</td>
             <td>${request.stock}</td>
         `;
@@ -155,14 +156,15 @@ function renderRequestsTable(requests) {
         return;
     tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
     if (requests.length === 0 || requests.every(r => Object.keys(r).length === 0)) {
-        tbody.innerHTML = '<tr><td colspan="4">No requests available</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5">No requests available</td></tr>';
         return;
     }
     requests.forEach((request) => {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${request.uuid}</td>
-            <td>${request.node}</td>
+            <td>${request.requester_node}</td>
+            <td>${request.ip_address}</td>
             <td>${request.product_id}</td>
             <td>${request.stock}</td>
         `;
@@ -323,13 +325,14 @@ $('#sell-form').on('submit', function (e) {
 $('#send-query-form').on('submit', function (e) {
     e.preventDefault();
     const destination_node = $('#destination-node-query').val();
+    const ip_address = $('#ip-address-query').val();
     const product_id = $('#product-id-query').val();
     const stock = parseInt($('#stock-query').val());
     $.ajax({
         url: '/send_query',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({ destination_node, product_id, stock }),
+        data: JSON.stringify({ destination_node, ip_address, product_id, stock }),
         success: function (response) {
             alert(response.message);
         },
@@ -342,13 +345,14 @@ $('#send-query-form').on('submit', function (e) {
 $('#send-request-form').on('submit', function (e) {
     e.preventDefault();
     const destination_node = $('#destination-node-request').val();
+    const ip_address = $('#ip-address-request').val();
     const product_id = $('#product-id-request').val();
     const stock = parseInt($('#stock-request').val());
     $.ajax({
         url: '/send_request',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({ destination_node, product_id, stock }),
+        data: JSON.stringify({ destination_node, ip_address, product_id, stock }),
         success: function (response) {
             alert(response.message);
         },

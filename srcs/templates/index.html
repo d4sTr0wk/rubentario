@@ -29,6 +29,46 @@
 			</thead>
 			<tbody></tbody>
 		</table>
+		
+	<div class="form-grid">
+        <div class="card">
+			<h2>Buy Product</h2>
+			<form id="buy-form">
+				<div class="form-control">
+                    <label for="seller-buy">Seller:</label>
+                    <input type="text" id="seller-buy" name="seller" required>
+                </div>
+                <div class="form-control">
+                    <label for="product-buy">Product ID:</label>
+					<input type="text" id="product-id-buy" name="product-id"required>
+                </div>
+                <div class="form-control">
+                    <label for="stock-buy">Quantity:</label>
+                    <input type="number" id="stock-buy" name="stock" required>
+                </div>
+                <button type="submit" class="btn">Buy</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Sell Product</h2>
+            <form id="sell-form">
+                <div class="form-control">
+                    <label for="client-sell">Client:</label>
+                    <input type="text" id="client-sell" name="client" required>
+                </div>
+                <div class="form-control">
+                    <label for="product-sell">Product ID:</label>
+                    <input type="text" id="product-id-sell" name="product-id"required>
+                </div>
+                <div class="form-control">
+                    <label for="stock-sell">Quantity:</label>
+                    <input type="number" id="stock-sell" name="stock" required>
+                </div>
+                <button type="submit" class="btn">Sell</button>
+            </form>
+        </div>
+    </div>
 
         <h2>My Requests</h2>
 		<table border="1" id="myRequestsTable">
@@ -36,6 +76,7 @@
 				<tr>
 					<th>UUID</th>
 					<th>Destination Node</th>
+                    <th>Ip Address</th>
 					<th>Product ID</th>
 					<th>Stock</th>
 				</tr>
@@ -49,12 +90,36 @@
 				<tr>
 					<th>UUID</th>
 					<th>Requester Node</th>
+                    <th>Ip Address</th>
 					<th>Product ID</th>
 					<th>Stock</th>
 				</tr>
 			</thead>
 			<tbody></tbody>
 		</table>
+
+		<div class="card">
+            <h2>Send Request</h2>
+            <form id="send-request-form">
+                <div class="form-control">
+                    <label for="destination-node-request">Destination Node:</label>
+                    <input type="text" id="destination-node-request" name="destination-node" required>
+                </div>
+		<div class="form-control">
+                    <label for="ip-address-request">Ip Address:</label>
+                    <input type="text" id="ip-address-request" name="ip-address" required>
+                </div>
+                <div class="form-control">
+                    <label for="product-id-request">Product ID:</label>
+                    <input type="text" id="product-id-request" name="product-id" required>
+                </div>
+                <div class="form-control">
+                    <label for="stock-request">Stock:</label>
+                    <input type="number" id="stock-request" name="stock" required>
+                </div>
+                <button type="submit" class="btn">Send</button>
+            </form>
+        </div>
 
 		<h2>Products</h2>
 		<table border="1" id="productsTable">
@@ -71,6 +136,51 @@
 			</thead>
 			<tbody></tbody>
 		</table>
+		<div class="card">
+		<h2>Add Product</h2>
+        <form id="add-product-form">
+            <div class="form-control">
+                <label for="add-product">Product ID:</label>
+				<input type="text" id="add-product-id" name="product-id" required>
+            </div>
+            <div class="form-control">
+                <label for="add-product-name">Product name:</label>
+                <input type="text" id="add-product-name" name="product-name" required>
+            </div>
+            <div class="form-control">
+                <label for="add-product-description">Description:</label>
+                <input type="text" id="add-product-description" name="product-description" required>
+            </div>
+			<div class="form-control">
+				<label for="add-product-minimum-stock">Minimum Stock:</label>
+				<input type="number" id="add-product-minimum-stock" name="product-minimum-stock" required>
+			</div>
+			<div class="form-control">
+                <label for="add-product-unit-price">Unit Price:</label>
+                <input type="number" id="add-product-unit-price" name="product-unit-price" step="any" required>
+            </div>
+			<div class="form-control">
+                <label for="add-product-weight">Weight:</label>
+                <input type="number" id="add-product-weight" name="product-weight" step="any" required>
+            </div>
+            <div class="form-control">
+				<label for="add-product-expiration-date">Expiration Date:</label>
+                <input type="date" id="add-product-expiration-date" name="product-expiration-date" required>
+            </div>
+			<button type="submit" class="btn">Add</button>
+        </form>
+		</div>
+
+		<div class="card">
+		<h2>Delete Product</h2>
+        <form id="delete-product-form">
+            <div class="form-control">
+                <label for="delete-product">Product ID:</label>
+				<input type="text" id="delete-product-id" name="product-id" required>
+            </div>
+			<button type="submit" class="btn">Delete</button>
+        </form>
+		</div>
 
 		<h2>Transactions</h2>
 		<table border="1" id="transactionsTable">
@@ -86,117 +196,17 @@
 			<tbody></tbody>
 		</table>
 
-		<div class="card">
-			<h2>Add Product</h2>
-            <form id="add-product-form">
-                <div class="form-control">
-                    <label for="add-product">Product ID:</label>
-					<input type="text" id="add-product-id" name="product-id" required>
-                </div>
-                <div class="form-control">
-                    <label for="add-product-name">Product name:</label>
-                    <input type="text" id="add-product-name" name="product-name" required>
-                </div>
-                <div class="form-control">
-                    <label for="add-product-description">Description:</label>
-                    <input type="text" id="add-product-description" name="product-description" required>
-                </div>
-				<div class="form-control">
-					<label for="add-product-minimum-stock">Minimum Stock:</label>
-					<input type="number" id="add-product-minimum-stock" name="product-minimum-stock" required>
-				</div>
-				<div class="form-control">
-                    <label for="add-product-unit-price">Unit Price:</label>
-                    <input type="number" id="add-product-unit-price" name="product-unit-price" step="any" required>
-                </div>
-				<div class="form-control">
-                    <label for="add-product-weight">Weight:</label>
-                    <input type="number" id="add-product-weight" name="product-weight" step="any" required>
-                </div>
-                <div class="form-control">
-					<label for="add-product-expiration-date">Expiration Date:</label>
-                    <input type="date" id="add-product-expiration-date" name="product-expiration-date" required>
-                </div>
-				<button type="submit" class="btn">Add</button>
-            </form>
-		</div>
-
-		<div class="card">
-			<h2>Delete Product</h2>
-            <form id="delete-product-form">
-                <div class="form-control">
-                    <label for="delete-product">Product ID:</label>
-					<input type="text" id="delete-product-id" name="product-id" required>
-                </div>
-				<button type="submit" class="btn">Delete</button>
-            </form>
-		</div>
-
-        <div class="form-grid">
-            <div class="card">
-                <h2>Buy Product</h2>
-                <form id="buy-form">
-                    <div class="form-control">
-                        <label for="seller-buy">Seller:</label>
-                        <input type="text" id="seller-buy" name="seller" required>
-                    </div>
-                    <div class="form-control">
-                        <label for="product-buy">Product ID:</label>
-						<input type="text" id="product-id-buy" name="product-id"required>
-                    </div>
-                    <div class="form-control">
-                        <label for="stock-buy">Quantity:</label>
-                        <input type="number" id="stock-buy" name="stock" required>
-                    </div>
-                    <button type="submit" class="btn">Buy</button>
-                </form>
-            </div>
-
-            <div class="card">
-                <h2>Sell Product</h2>
-                <form id="sell-form">
-                    <div class="form-control">
-                        <label for="client-sell">Client:</label>
-                        <input type="text" id="client-sell" name="client" required>
-                    </div>
-                    <div class="form-control">
-                        <label for="product-sell">Product ID:</label>
-                        <input type="text" id="product-id-sell" name="product-id"required>
-                    </div>
-                    <div class="form-control">
-                        <label for="stock-sell">Quantity:</label>
-                        <input type="number" id="stock-sell" name="stock" required>
-                    </div>
-                    <button type="submit" class="btn">Sell</button>
-                </form>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2>Send Request</h2>
-            <form id="send-request-form">
-                <div class="form-control">
-                    <label for="destination-node-request">Destinatio Node:</label>
-                    <input type="text" id="destination-node-request" name="destination-node" required>
-                </div>
-                <div class="form-control">
-                    <label for="product-id-request">Product ID:</label>
-                    <input type="text" id="product-id-request" name="product-id" required>
-                </div>
-                <div class="form-control">
-                    <label for="stock-request">Stock:</label>
-                    <input type="number" id="stock-request" name="stock" required>
-                </div>
-                <button type="submit" class="btn">Send</button>
-            </form>
-        </div>
-
+		
 		<div class="card">
             <h2>Send Query</h2>
             <form id="send-query-form">
                 <div class="form-control">
                     <label for="destination-node-query">Destination Node:</label>
                     <input type="text" id="destination-node-query" name="destination-node" required>
+                </div>
+		<div class="form-control">
+                    <label for="ip-address-query">Ip Address:</label>
+                    <input type="text" id="ip-address-query" name="ip-address" required>
                 </div>
                 <div class="form-control">
                     <label for="product-id-query">Product ID:</label>

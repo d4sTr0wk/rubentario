@@ -10,9 +10,6 @@ const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const host = window.location.host;
 const socket = io(`${protocol}//${host}`);
 
-
-
-
 interface InventoryDict {
 	[product_id: string]: [number, number];
 }
@@ -28,10 +25,19 @@ interface Product {
   expiration_date: string;
 }
 
+interface MyRequest {
+	uuid: string;
+	destination_node: string;
+	ip_address: string;
+	product_id: string;
+	stock: number;
+}
+
 // Type definition for request
 interface Request {
 	uuid: string;
-	node: string;
+	requester_node: string;
+    ip_address: string;
 	product_id: string;
 	stock: number;
 }
@@ -138,7 +144,7 @@ async function updateProducts(): Promise<void> {
 
 
 // MY REQUESTS
-async function fetchMyRequests(): Promise<Request[]> {
+async function fetchMyRequests(): Promise<MyRequest[]> {
 	const response = await fetch('/api/my_requests');
 	if (!response.ok) {
 		throw new Error(`Product read table error: ${response.statusText}`);
@@ -146,14 +152,14 @@ async function fetchMyRequests(): Promise<Request[]> {
 	return response.json();
 }
 
-function renderMyRequestsTable(requests: Request[]): void {
+function renderMyRequestsTable(requests: MyRequest[]): void {
 	const tbody = document.querySelector('#myRequestsTable tbody');
     if (!tbody) return;
 
     tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
 
 	if (requests.length === 0 || requests.every(r => Object.keys(r).length === 0)) {
-        tbody.innerHTML = '<tr><td colspan="4">No requests available</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5">No requests available</td></tr>';
         return;
     }
 
@@ -161,7 +167,8 @@ function renderMyRequestsTable(requests: Request[]): void {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${request.uuid}</td>
-            <td>${request.node}</td>
+            <td>${request.destination_node}</td>
+            <td>${request.ip_address}</td>
             <td>${request.product_id}</td>
             <td>${request.stock}</td>
         `;
@@ -195,7 +202,7 @@ function renderRequestsTable(requests: Request[]): void {
     tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
 
 	if (requests.length === 0 || requests.every(r => Object.keys(r).length === 0)) {
-        tbody.innerHTML = '<tr><td colspan="4">No requests available</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5">No requests available</td></tr>';
         return;
     }
 
@@ -203,7 +210,8 @@ function renderRequestsTable(requests: Request[]): void {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${request.uuid}</td>
-            <td>${request.node}</td>
+            <td>${request.requester_node}</td>
+            <td>${request.ip_address}</td>
             <td>${request.product_id}</td>
             <td>${request.stock}</td>
         `;
@@ -378,6 +386,7 @@ $('#sell-form').on('submit', function (e: JQuery.SubmitEvent) {
 $('#send-query-form').on('submit', function (e: JQuery.SubmitEvent) {
   e.preventDefault();
   const destination_node = $('#destination-node-query').val() as string;
+  const ip_address = $('#ip-address-query').val() as string;
   const product_id = $('#product-id-query').val() as string;
   const stock = parseInt($('#stock-query').val() as string);
 
@@ -385,7 +394,7 @@ $('#send-query-form').on('submit', function (e: JQuery.SubmitEvent) {
     url: '/send_query',
     method: 'POST',
     contentType: 'application/json',
-    data: JSON.stringify({ destination_node, product_id, stock }),
+    data: JSON.stringify({ destination_node, ip_address, product_id, stock }),
     success: function (response: { message: string }) {
       alert(response.message);
     },
@@ -400,13 +409,14 @@ $('#send-query-form').on('submit', function (e: JQuery.SubmitEvent) {
 $('#send-request-form').on('submit', function (e: JQuery.SubmitEvent) {
   e.preventDefault();
   const destination_node = $('#destination-node-request').val() as string;
+  const ip_address = $('#ip-address-request').val() as string;
   const product_id = $('#product-id-request').val() as string;
   const stock = parseInt($('#stock-request').val() as string);
   $.ajax({
     url: '/send_request',
     method: 'POST',
     contentType: 'application/json',
-    data: JSON.stringify({ destination_node, product_id, stock }),
+    data: JSON.stringify({ destination_node, ip_address, product_id, stock }),
     success: function (response: { message: string }) {
       alert(response.message);
     },
