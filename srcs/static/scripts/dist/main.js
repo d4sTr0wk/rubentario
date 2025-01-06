@@ -361,6 +361,42 @@ $('#send-request-form').on('submit', function (e) {
         }
     });
 });
+// Accept request
+$('#acceptance-form').on('submit', function (e) {
+    e.preventDefault();
+    const request_uuid = $('#uuid-acceptance').val();
+    $.ajax({
+        url: '/accept_request',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ request_uuid }),
+        success: function (response) {
+            alert(response.message);
+            updateInventory();
+            updateRequests();
+        },
+        error: function (response) {
+            alert(response.responseJSON.error);
+        }
+    });
+});
+// Decline request
+$('#declination-form').on('submit', function (e) {
+    e.preventDefault();
+    const request_uuid = $('#uuid-declination').val();
+    $.ajax({
+        url: '/decline_request',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ request_uuid }),
+        success: function (response) {
+            alert(response.message);
+        },
+        error: function (response) {
+            alert(response.responseJSON.error);
+        }
+    });
+});
 // SOCKETS
 socket.on('request_response', (data) => {
     if (!data.product_id) {
@@ -382,6 +418,9 @@ socket.on('query_response', (data) => {
     else {
         alert(`Query response received: ${JSON.stringify(data)}`);
     }
+});
+socket.on('alert_minimum_stock', () => {
+    alert("Product on inventory will be on minimum stock levels!");
 });
 // Initial calls
 updateInventory();

@@ -27,7 +27,7 @@ interface Product {
 
 interface MyRequest {
 	uuid: string;
-	destination_node: string;
+	destination_node: string
 	ip_address: string;
 	product_id: string;
 	stock: number;
@@ -427,6 +427,46 @@ $('#send-request-form').on('submit', function (e: JQuery.SubmitEvent) {
 });
 
 
+// Accept request
+$('#acceptance-form').on('submit', function (e: JQuery.SubmitEvent) {
+  e.preventDefault();
+  const request_uuid = $('#uuid-acceptance').val() as string;
+  $.ajax({
+    url: '/accept_request',
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({ request_uuid }),
+    success: function (response: { message: string }) {
+      alert(response.message);
+	  updateInventory();
+	  updateRequests();
+    },
+    error: function (response: JQuery.jqXHR) {
+      alert(response.responseJSON.error);
+    }
+  });
+});
+
+
+// Decline request
+$('#declination-form').on('submit', function (e: JQuery.SubmitEvent) {
+  e.preventDefault();
+  const request_uuid = $('#uuid-declination').val() as string;
+  $.ajax({
+    url: '/decline_request',
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({ request_uuid }),
+    success: function (response: { message: string }) {
+      alert(response.message);
+    },
+    error: function (response: JQuery.jqXHR) {
+      alert(response.responseJSON.error);
+    }
+  });
+});
+
+
 // SOCKETS
 socket.on('request_response', (data: Request) => {
 	if (!data.product_id) {
@@ -448,6 +488,10 @@ socket.on('query_response', (data: QueryResponse) => {
 	} else {
 		alert(`Query response received: ${JSON.stringify(data)}`)
 	}
+});
+
+socket.on('alert_minimum_stock', () => {
+	alert("Product on inventory will be on minimum stock levels!")
 });
 
 

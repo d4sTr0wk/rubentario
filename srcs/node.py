@@ -64,7 +64,7 @@ class Node:
 		# My requests
 		self.cursor.execute('''
 				CREATE TABLE IF NOT EXISTS my_requests (
-					uuid VARCHAR(36) NOT NULL,	
+					uuid VARCHAR(36) NOT NULL UNIQUE,	
 					destination_node VARCHAR(255) NOT NULL,
 					ip_address inet,
 					product_id VARCHAR(50) NOT NULL,
@@ -82,7 +82,7 @@ class Node:
 		# Notifications for incoming requests
 		self.cursor.execute('''
 			CREATE TABLE IF NOT EXISTS requests (
-				uuid VARCHAR(36) NOT NULL,
+				uuid VARCHAR(36) NOT NULL UNIQUE,
 				requester_node VARCHAR(255) NOT NULL,
 				ip_address inet,
 				product_id VARCHAR(50) NOT NULL,
@@ -159,8 +159,13 @@ class Node:
 			headers = {'Content-Type': 'application/json'}
 			if properties.headers['message_type'] == 'request':
 				response = requests.post(f"http://{self.url}:{self.port}/new_request", headers=headers, data=body)
-			else:
+			elif properties.headers['message_type'] == 'response':
 				response = requests.post(f"http://{self.url}:{self.port}/request_response", headers=headers, data=body)
+			elif properties.headers['message_type'] == 'acceptance':
+				response = requests.post(f"http://{self.url}:{self.port}/accept_response", headers=headers, data=body)
+			else:
+				response = requests.post(f"http://{self.url}:{self.port}/decline_response", headers=headers, data=body)
+
 			if response.status_code == 200:
 				print("Request added successfully!")
 			else:
@@ -637,22 +642,184 @@ def send_request():
 		
 		destination_node = data["destination_node"] + "_requests"
 		ip_address = data["ip_address"]
-		product = data["product_id"]
+		product_id = data["product_id"]
 		stock = int(data["stock"])
 
-		if not all ([destination_node, product, stock]):
+		if not all ([destination_node, ip_address, product_id, stock]):
 			return jsonify({"error": "Missing required fields"}), 400
 
-		print(f"Sending request to {destination_node} for {product} on {ip_address} ({stock} units)")
-		node.send_request(destination_node=destination_node, ip_address=ip_address, product_id=product, stock=stock)
+		node.cursor.execute("SELECT * FROM products WHERE id = %s;", (product_id,))
+		if node.cursor.rowcount == 0:
+			return jsonify({"error": f"Product {product_id} not found registered on this node"}), 405
 
-		return jsonify({"message": f"Request for {product} sent to {destination_node} ({stock} units)"}), 200
+		print(f"Sending request to {destination_node} for {product_id} on {ip_address} ({stock} units)")
+		node.send_request(destination_node=destination_node, ip_address=ip_address, product_id=product_id, stock=stock)
+
+		return jsonify({"message": f"Request for {product_id} sent to {destination_node} ({stock} units)"}), 200
 	except KeyError as e:
 		return jsonify({"error": f"Missing key in request data ({e})"}), 400
 	except ValueError as e:
 		return jsonify({"error": f"Invalid stock ({e})"}), 400
 	except Exception as e:
 		return jsonify({"error": f"Internal unexpected server error ({str(e)})"}), 500
+
+
+@app.route("/accept_request", methods=["POST"])
+def accept_request():
+	data = request.json
+	if data is None:
+		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
+	request_uuid = data["request_uuid"]
+
+	node.cursor.execute('''
+		SELECT inventory.product_id, inventory.stock, products.minimum_stock, requests.stock AS stock_required, requests.requester_node, requests.ip_address
+		FROM requests 
+		JOIN inventory ON requests.product_id = inventory.product_id 
+		JOIN products ON products.id = requests.product_id 
+		WHERE uuid = %s;
+	''', (request_uuid,))
+
+	if node.cursor.rowcount == 0:
+		return jsonify({"error": "UUID not found or product not found on inventory."}), 400
+
+	row = node.cursor.fetchone()
+	result = {
+		'product_id': str(row[0]),
+		'stock': row[1],
+		'minimum_stock': row[2],
+		'stock_required': row[3],
+		'requester_node': str(row[4]),
+		'ip_address': str(row[5])
+	}
+
+	if result["stock_required"] > result["stock"]:
+		return jsonify({"error": "No enough stock to transfer"}), 400
+
+	if result["stock"] - result["stock_required"] <= result["minimum_stock"]:
+		socketio.emit('alert_minimum_stock')
+
+	try:
+		node.cursor.execute("UPDATE inventory SET stock = stock - %s WHERE product_id = %s;", (result["stock_required"], result["product_id"]))
+		node.db_conn.commit()
+	except Exception as e:
+	   node.db_conn.rollback()
+	   return jsonify({"error": "Error updating product to inventory when request accepted: {e}"}), 400
+
+	publish_connection = pika.BlockingConnection(pika.ConnectionParameters(result["ip_address"], heartbeat = 1))
+	publish_channel = publish_connection.channel()
+
+	message = {"uuid": request_uuid}
+	publish_channel.basic_publish(
+			exchange='',
+			routing_key=result["requester_node"] + "_requests", 
+			body=json.dumps(message),
+			properties=pika.BasicProperties(headers={'message_type': 'acceptance'})) 
+	try:
+		node.cursor.execute("DELETE FROM requests WHERE uuid = %s;", (request_uuid,))
+		node.db_conn.commit()
+	except Exception as e:
+		node.db_conn.rollback()
+		return jsonify({"error": "accept_request table deleting error"}), 400
+	finally:
+		with node.lock:
+			for req in node.requests_cache:
+				if req["uuid"] == request_uuid:
+					node.requests_cache.remove(req)
+					break
+			node.inventory_cache[result["product_id"]] -= result["stock_required"]
+	
+	return jsonify({"message": f"Request {request_uuid} accepted"}), 200
+
+
+@app.route("/decline_request", methods=["POST"])
+def decline_request():
+	data = request.json
+	if data is None:
+		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
+	request_uuid = data["request_uuid"]
+
+	node.cursor.execute('''
+		SELECT requests.requester_node, requests.ip_address
+		FROM requests 
+		WHERE uuid = %s;
+	''', (request_uuid,))
+
+	if node.cursor.rowcount == 0:
+		return jsonify({"error": "UUID not found."}), 400
+
+	row = node.cursor.fetchone()
+	result = {
+		'requester_node': str(row[0]),
+		'ip_address': str(row[1])
+	}
+
+	publish_connection = pika.BlockingConnection(pika.ConnectionParameters(result["ip_address"], heartbeat = 1))
+	publish_channel = publish_connection.channel()
+
+	message = {"uuid": request_uuid}
+	publish_channel.basic_publish(
+			exchange='',
+			routing_key=result["requester_node"] + "_requests", 
+			body=json.dumps(message),
+			properties=pika.BasicProperties(headers={'message_type': 'declination'})) 
+	try:
+		node.cursor.execute("DELETE FROM requests WHERE uuid = %s;", (request_uuid,))
+		node.db_conn.commit()
+	except Exception as e:
+		node.db_conn.rollback()
+		return jsonify({"error": "decline_request table deleting error"}), 400
+	finally:
+		with node.lock:
+			for req in node.requests_cache:
+				if req["uuid"] == request_uuid:
+					node.requests_cache.remove(req)
+					break
+	
+	return jsonify({"message": f"Request {request_uuid} declined"}), 200
+
+
+@app.route("/accept_response", methods=["POST"])
+def accept_response():
+	data = request.json
+	if data is None:
+		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
+	request_uuid = data["uuid"]
+
+	node.cursor.execute("SELECT product_id, stock, destination_node FROM my_requests WHERE uuid = %s;", (request_uuid,))
+	row = node.cursor.fetchone()
+	result = {
+		'product_id': str(row[0]),
+		'stock': row[1],
+		'destination_node': row[2]
+	}
+	
+	try:
+		node.cursor.execute("UPDATE inventory SET stock = stock + %s WHERE product_id = %s;", (result["stock"], result["product_id"]))
+		node.db_conn.commit()
+	except Exception as e:
+	   node.db_conn.rollback()
+	   return jsonify({"error": "Error adding product to inventory when request accepted: {e}"}), 400
+
+	url = node.url + "/buy"
+
+	payload = {
+		"seller": result["destination_node"],
+		"product_id": result["product_id"],
+		"stock": result["stock"]
+	}
+
+	headers = {
+		"Content-Type": "application/json"
+	}
+
+	try:
+		response = requests.post(url, json=payload, headers=headers)
+	except Exception as e:
+		print(f"Error enviando la solicitud: {e}")
+	return jsonify({"message": f"Request {request_uuid} resolved! Product added to inventory"}), 200
 
 
 @app.route("/add_product", methods=["POST"])
@@ -737,24 +904,20 @@ def get_inventory():
 
 @app.route("/api/products", methods=["GET"])
 def get_products():
-	print(f"Products: { node.products_cache }")
 	return jsonify(node.products_cache), 200
 
 @app.route("/api/requests", methods=["GET"])
 def get_requests():
-	print(f"Current requests in node{id(node)}: {node.requests_cache}")
 	return jsonify(node.requests_cache), 200
 
 
 @app.route("/api/my_requests", methods=["GET"])
 def get_my_requests():
-	print(f"My current requests: {node.my_requests_cache}")
 	return jsonify(node.my_requests_cache), 200
 
 
 @app.route("/api/transactions", methods=["GET"])
 def get_transactions():
-	print(f"Transactions: { node.transactions_cache }")
 	return jsonify(node.transactions_cache), 200
 
 
