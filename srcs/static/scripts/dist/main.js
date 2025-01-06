@@ -11,14 +11,6 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const host = window.location.host;
 const socket = io(`${protocol}//${host}`);
-socket.on('query_response', (data) => {
-    if (!data.product_id) {
-        alert("Product not found on node's inventory");
-    }
-    else {
-        alert(`Query response received: ${JSON.stringify(data)}`);
-    }
-});
 // INVENTORY
 function fetchInventory() {
     return __awaiter(this, void 0, void 0, function* () {
@@ -106,7 +98,48 @@ function updateProducts() {
         }
     });
 }
-// REQUESTS
+// MY REQUESTS
+function fetchMyRequests() {
+    return __awaiter(this, void 0, void 0, function* () {
+        const response = yield fetch('/api/my_requests');
+        if (!response.ok) {
+            throw new Error(`Product read table error: ${response.statusText}`);
+        }
+        return response.json();
+    });
+}
+function renderMyRequestsTable(requests) {
+    const tbody = document.querySelector('#myRequestsTable tbody');
+    if (!tbody)
+        return;
+    tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
+    if (requests.length === 0 || requests.every(r => Object.keys(r).length === 0)) {
+        tbody.innerHTML = '<tr><td colspan="4">No requests available</td></tr>';
+        return;
+    }
+    requests.forEach((request) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${request.uuid}</td>
+            <td>${request.node}</td>
+            <td>${request.product_id}</td>
+            <td>${request.stock}</td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+function updateMyRequests() {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const request = yield fetchMyRequests();
+            renderMyRequestsTable(request);
+        }
+        catch (error) {
+            console.error('Error getting requests:', error);
+        }
+    });
+}
+// OTHER'S REQUESTS
 function fetchRequests() {
     return __awaiter(this, void 0, void 0, function* () {
         const response = yield fetch('/api/requests');
@@ -122,13 +155,14 @@ function renderRequestsTable(requests) {
         return;
     tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
     if (requests.length === 0 || requests.every(r => Object.keys(r).length === 0)) {
-        tbody.innerHTML = '<tr><td colspan="3">No requests available</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4">No requests available</td></tr>';
         return;
     }
     requests.forEach((request) => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${request.requester_node}</td>
+            <td>${request.uuid}</td>
+            <td>${request.node}</td>
             <td>${request.product_id}</td>
             <td>${request.stock}</td>
         `;
@@ -307,8 +341,8 @@ $('#send-query-form').on('submit', function (e) {
 // Handle sending a manual notification
 $('#send-request-form').on('submit', function (e) {
     e.preventDefault();
-    const destination_node = $('#node-id-request').val();
-    const product_id = $('#product-request').val();
+    const destination_node = $('#destination-node-request').val();
+    const product_id = $('#product-id-request').val();
     const stock = parseInt($('#stock-request').val());
     $.ajax({
         url: '/send_request',
@@ -323,9 +357,32 @@ $('#send-request-form').on('submit', function (e) {
         }
     });
 });
+// SOCKETS
+socket.on('request_response', (data) => {
+    if (!data.product_id) {
+        alert("Product not found on node's inventory");
+    }
+    else {
+        updateMyRequests();
+        alert(`Request acknowledged: ${JSON.stringify(data)}`);
+    }
+});
+socket.on('new_request', (data) => {
+    updateRequests();
+    alert(`Request received!: ${JSON.stringify(data)}`);
+});
+socket.on('query_response', (data) => {
+    if (!data.product_id) {
+        alert("Product not found on node's inventory");
+    }
+    else {
+        alert(`Query response received: ${JSON.stringify(data)}`);
+    }
+});
 // Initial calls
 updateInventory();
 updateProducts();
+updateMyRequests();
 updateRequests();
 updateTransactions();
 // Interval of long polling to append new requests

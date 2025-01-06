@@ -10,20 +10,8 @@ const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const host = window.location.host;
 const socket = io(`${protocol}//${host}`);
 
-socket.on('query_response', (data: QueryResponse) => {
-	if (!data.product_id) {
-		alert("Product not found on node's inventory");
-	} else {
-		alert(`Query response received: ${JSON.stringify(data)}`)
-	}
-});
 
-// Type definition for product request
-interface ProductRequest {
-  requester_node: string;
-  product: string;
-  stock: number;
-}
+
 
 interface InventoryDict {
 	[product_id: string]: [number, number];
@@ -42,7 +30,8 @@ interface Product {
 
 // Type definition for request
 interface Request {
-	requester_node: string;
+	uuid: string;
+	node: string;
 	product_id: string;
 	stock: number;
 }
@@ -148,7 +137,49 @@ async function updateProducts(): Promise<void> {
 }
 
 
-// REQUESTS
+// MY REQUESTS
+async function fetchMyRequests(): Promise<Request[]> {
+	const response = await fetch('/api/my_requests');
+	if (!response.ok) {
+		throw new Error(`Product read table error: ${response.statusText}`);
+	}
+	return response.json();
+}
+
+function renderMyRequestsTable(requests: Request[]): void {
+	const tbody = document.querySelector('#myRequestsTable tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
+
+	if (requests.length === 0 || requests.every(r => Object.keys(r).length === 0)) {
+        tbody.innerHTML = '<tr><td colspan="4">No requests available</td></tr>';
+        return;
+    }
+
+    requests.forEach((request) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${request.uuid}</td>
+            <td>${request.node}</td>
+            <td>${request.product_id}</td>
+            <td>${request.stock}</td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+async function updateMyRequests(): Promise<void> {
+    try {
+        const request = await fetchMyRequests();
+        renderMyRequestsTable(request);
+    } catch (error) {
+        console.error('Error getting requests:', error);
+    }
+}
+
+
+// OTHER'S REQUESTS
 async function fetchRequests(): Promise<Request[]> {
 	const response = await fetch('/api/requests');
 	if (!response.ok) {
@@ -164,14 +195,15 @@ function renderRequestsTable(requests: Request[]): void {
     tbody.innerHTML = ''; // Limpiar la tabla antes de llenarla
 
 	if (requests.length === 0 || requests.every(r => Object.keys(r).length === 0)) {
-        tbody.innerHTML = '<tr><td colspan="3">No requests available</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4">No requests available</td></tr>';
         return;
     }
 
     requests.forEach((request) => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${request.requester_node}</td>
+            <td>${request.uuid}</td>
+            <td>${request.node}</td>
             <td>${request.product_id}</td>
             <td>${request.stock}</td>
         `;
@@ -367,10 +399,9 @@ $('#send-query-form').on('submit', function (e: JQuery.SubmitEvent) {
 // Handle sending a manual notification
 $('#send-request-form').on('submit', function (e: JQuery.SubmitEvent) {
   e.preventDefault();
-  const destination_node = $('#node-id-request').val() as string;
-  const product_id = $('#product-request').val() as string;
+  const destination_node = $('#destination-node-request').val() as string;
+  const product_id = $('#product-id-request').val() as string;
   const stock = parseInt($('#stock-request').val() as string);
-
   $.ajax({
     url: '/send_request',
     method: 'POST',
@@ -386,9 +417,34 @@ $('#send-request-form').on('submit', function (e: JQuery.SubmitEvent) {
 });
 
 
+// SOCKETS
+socket.on('request_response', (data: Request) => {
+	if (!data.product_id) {
+		alert("Product not found on node's inventory");
+	} else {
+		updateMyRequests();
+		alert(`Request acknowledged: ${JSON.stringify(data)}`)
+	}
+});
+
+socket.on('new_request', (data: Request) => {
+	updateRequests();
+	alert(`Request received!: ${JSON.stringify(data)}`)
+});
+
+socket.on('query_response', (data: QueryResponse) => {
+	if (!data.product_id) {
+		alert("Product not found on node's inventory");
+	} else {
+		alert(`Query response received: ${JSON.stringify(data)}`)
+	}
+});
+
+
 // Initial calls
 updateInventory();
 updateProducts();
+updateMyRequests();
 updateRequests();
 updateTransactions();
 // Interval of long polling to append new requests

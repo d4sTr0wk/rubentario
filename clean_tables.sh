@@ -15,5 +15,6 @@ PGPASSWORD=$DB_PASS psql -U $DB_USER -d $DB_NAME -c "DROP TABLE inventory CASCAD
 PGPASSWORD=$DB_PASS psql -U $DB_USER -d $DB_NAME -c "DROP TABLE products CASCADE;"
 PGPASSWORD=$DB_PASS psql -U $DB_USER -d $DB_NAME -c "DROP TABLE transactions CASCADE;"
 PGPASSWORD=$DB_PASS psql -U $DB_USER -d $DB_NAME -c "DROP TABLE requests CASCADE;"
+PGPASSWORD=$DB_PASS psql -U $DB_USER -d $DB_NAME -c "DROP TABLE my_requests CASCADE;"
 
 echo "Tables dropped!✅"

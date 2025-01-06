@@ -7,10 +7,9 @@ import threading
 import argparse
 import signal
 import sys
-from pika.spec import methods
 import requests
 import psycopg2
-import time
+import uuid
 from psycopg2 import errors
 from datetime import datetime
 
@@ -51,9 +50,9 @@ class Node:
 		self.requests_queue = self.id + "_requests"
 		self.query_queue = self.id + "_queries"
 		try:
-			self.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
-			self.request_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
-			self.query_connection = pika.BlockingConnection(pika.ConnectionParameters(self.url))
+			self.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.url, heartbeat=60))
+			self.request_connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.url, heartbeat=60))
+			self.query_connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.url, heartbeat=60))
 		except pika.exceptions.AMQPConnectionError as e:
 			print(f"Error connecting to RabbitMQ: {e}")
 			raise e
@@ -67,9 +66,27 @@ class Node:
 		# Publish channel for sending requests and responses to other selfs
 		self.publish_channel = self.publish_connection.channel()
 
+		# My requests
+		self.cursor.execute('''
+				CREATE TABLE IF NOT EXISTS my_requests (
+					uuid VARCHAR(36) NOT NULL,	
+					destination_node VARCHAR(255) NOT NULL,
+					product_id VARCHAR(50) NOT NULL,
+					stock INTEGER NOT NULL
+				);
+		''')
+		self.my_requests_cache = []
+		self.cursor.execute("SELECT * FROM my_requests;")
+		if self.cursor.rowcount > 0:
+			rows = self.cursor.fetchall()
+			self.my_requests_cache = [
+					{"uuid": str(r[0]), "destination_node": str(r[1]), "product_id": str(r[2]), "stock": r[3]} for r in rows
+			]
+
 		# Notifications for incoming requests
 		self.cursor.execute('''
 			CREATE TABLE IF NOT EXISTS requests (
+				uuid VARCHAR(36) NOT NULL,
 				requester_node VARCHAR(255) NOT NULL,
 				product_id VARCHAR(50) NOT NULL,
 				stock INTEGER NOT NULL
@@ -80,7 +97,7 @@ class Node:
 		if self.cursor.rowcount > 0:
 			rows = self.cursor.fetchall()
 			self.requests_cache = [
-				{"requester_node": str(r[0]), "product_id": str(r[1]), "stock": r[2]} for r in rows
+					{"uuid": str(r[0]), "requester_node": str(r[1]), "product_id": str(r[2]), "stock": r[3]} for r in rows
 			]
 
 		# PRODUCTS
@@ -143,11 +160,14 @@ class Node:
 		# Send data to main server
 		try:
 			headers = {'Content-Type': 'application/json'}
-			response = requests.post(f"http://{self.url}:{self.port}/new_request", headers=headers, data=body)
-			if response.status_code == 200:
-				print("Message sended to server")
+			if properties.headers['message_type'] == 'request':
+				response = requests.post(f"http://{self.url}:{self.port}/new_request", headers=headers, data=body)
 			else:
-				print(f"Error sending request to server: {response.status_code}")
+				response = requests.post(f"http://{self.url}:{self.port}/request_response", headers=headers, data=body)
+			if response.status_code == 200:
+				print("Request added successfully!")
+			else:
+				print(f"Error adding request to server: {response.status_code}")
 		except Exception as e:
 			print(f"Error: {e}")
 
@@ -197,8 +217,8 @@ class Node:
 				print("Closed channel. Trying create new one . . .")
 				self.publish_channel = self.publish_connection.channel()
 
-			message = {"requester_node": node.id, "product_id": product_id, "stock": stock}
-			self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message)) 
+			message = {"uuid": str(uuid.uuid4()), "requester_node": node.id, "product_id": product_id, "stock": stock}
+			self.publish_channel.basic_publish(exchange='', routing_key=destination_node, body=json.dumps(message), properties=pika.BasicProperties(headers={'message_type': 'request'})) 
 
 		except pika.exceptions.AMQPChannelError as e:
 			print(f"Error in publish_channel: {e}")
@@ -333,6 +353,45 @@ def new_query():
 	return jsonify({"message": "Query resolved successfully"}), 200
 
 
+@app.route("/request_response", methods=["POST"])
+def request_response():
+	data = request.json
+	if data is None:
+		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
+	if not data:
+		socketio.emit('request_response', data)
+		return jsonify({"error": "Product not on node"}), 400
+
+	uuid = data["uuid"]
+	destination_node = data["destination_node"]
+	product_id = data["product_id"]
+	stock = int(data["stock"])
+
+	if not all ([product_id, destination_node, stock]):
+		return jsonify({"error": "Missing required fields"}), 400
+	
+	try:
+		node.cursor.execute("INSERT INTO my_requests VALUES(%s, %s, %s, %s);", (uuid, destination_node, product_id, stock))
+
+		node.db_conn.commit()	
+	except Exception as e:
+		node.db_conn.rollback()
+		return jsonify({"error": f"Error inserting in request_response: {e}"}), 400
+
+	with node.lock:
+		node.my_requests_cache.append({
+			'uuid': uuid,
+			'destination_node': destination_node,
+			'product_id': product_id,
+			'stock': stock
+		})
+
+	socketio.emit('request_response', data)
+
+	return jsonify({"message": "Response received!"}), 200
+
+
 """Receive new request from listening thread and update requests list"""
 @app.route("/new_request", methods=["POST"])
 def new_request():
@@ -341,6 +400,7 @@ def new_request():
 		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
 
 	# JSON data exctraction
+	uuid = data["uuid"]
 	requester_node = data["requester_node"]
 	product_id = data["product_id"]
 	stock = data["stock"]
@@ -352,18 +412,48 @@ def new_request():
 	node.cursor.execute("SELECT id FROM products WHERE id = %s;", (product_id,))
 	if node.cursor.rowcount == 0:
 		return jsonify({"error": "Product requested is not registered, consequently request is removed"}), 404
+	try:
+		node.cursor.execute("INSERT INTO requests VALUES(%s, %s, %s, %s);", (uuid, requester_node, product_id, stock))
 
-	node.cursor.execute("INSERT INTO requests VALUES(%s, %s, %s);", (requester_node, product_id, stock))
-
-	node.db_conn.commit()
+		node.db_conn.commit()
+	except Exception as e:
+		node.db_conn.rollback()
+		return jsonify({"error": f"Error inserting to table in new_request: {e}"}), 400
 
 	with node.lock:
 		node.requests_cache.append({
+			'uuid': uuid,
 			'requester_node': requester_node,
 			'product_id': product_id,
 			'stock': stock
 		})
-		print(f"New request added to node{id(node)} request list {id(node.requests_cache)}; Requester: {requester_node}, Product: {product_id}, Quantity; {stock}")
+		print(f"New request added to node{id(node)} request list {id(node.requests_cache)}; UUID: {uuid}, Requester: {requester_node}, Product: {product_id}, Quantity; {stock}")
+
+	socketio.emit('new_request', data)
+
+	try:
+		# Reconnect with RabbitMQ
+		if not node.publish_connection or node.publish_connection.is_closed:
+			print("Closed connection. Trying to open it . . .")
+			node.publish_connection = pika.BlockingConnection(pika.ConnectionParameters(node.url))
+		if not node.publish_channel or node.publish_channel.is_closed:
+			print("Closed channel. Trying create new one . . .")
+			node.publish_channel = node.publish_connection.channel()
+
+		message = {"uuid": uuid, "destination_node": node.id, "product_id": product_id, "stock": stock}
+		node.publish_channel.basic_publish(
+				exchange='',
+				routing_key=requester_node + "_requests",
+				body=json.dumps(message),
+				properties=pika.BasicProperties(headers={'message_type': 'response'})
+		) 
+
+	except pika.exceptions.AMQPChannelError as e:
+		print(f"Error in publish_channel: {e}")
+	except pika.exceptions.AMQPConnectionError as e:
+		print(f"Error in publish_connection: {e}")
+	except Exception as e:
+		print(f"Error sending request to {requester_node}: ({e})")
 
 	return jsonify({"message": "Request added successfully"}), 200
 
@@ -511,8 +601,8 @@ def send_query():
 		stock = int(data["stock"])
 
 		if not all ([destination_node, product_id, stock]):
-			  return jsonify({"error": "Missing required fields"}), 400
-		
+			return jsonify({"error": "Missing required fields"}), 400
+
 		print(f"Sending query to {destination_node} for {product_id} ({stock} units)")
 		node.send_query(destination_node=destination_node, product_id=product_id, stock=stock)
 
@@ -528,9 +618,9 @@ def send_request():
 		data = request.json
 		if data is None:
 			return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
-
+		
 		destination_node = data["destination_node"] + "_requests"
-		product = data["product"]
+		product = data["product_id"]
 		stock = int(data["stock"])
 
 		if not all ([destination_node, product, stock]):
@@ -637,6 +727,12 @@ def get_products():
 def get_requests():
 	print(f"Current requests in node{id(node)}: {node.requests_cache}")
 	return jsonify(node.requests_cache), 200
+
+
+@app.route("/api/my_requests", methods=["GET"])
+def get_my_requests():
+	print(f"My current requests: {node.my_requests_cache}")
+	return jsonify(node.my_requests_cache), 200
 
 
 @app.route("/api/transactions", methods=["GET"])
