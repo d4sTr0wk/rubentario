@@ -331,7 +331,7 @@ def new_query():
 	if not all([queryer_node, queryer_ip, product_id, stock]):
 		return jsonify({"error": "Missing required fields"}), 400
 
-	node.cursor.execute("SELECT product_id, stock, products.minimum_stock FROM inventory JOIN products ON products.id = inventory.product_id WHERE id = %s AND inventory.stock >= %s AND inventory.stock - %s > products.minimum_stock;", (product_id,stock,stock))
+	node.cursor.execute("SELECT product_id, stock, products.minimum_stock FROM inventory JOIN products ON products.id = inventory.product_id WHERE id = %s AND inventory.stock >= %s;", (product_id,stock))
 
 	row = node.cursor.fetchone()
 	if node.cursor.rowcount == 0 or row is None:
@@ -684,6 +684,9 @@ def accept_request():
 		return jsonify({"error": "UUID not found or product not found on inventory."}), 400
 
 	row = node.cursor.fetchone()
+	if not row:
+		return jsonify({"error": "Request not found on requests list"}), 400
+
 	result = {
 		'product_id': str(row[0]),
 		'stock': row[1],
@@ -698,13 +701,24 @@ def accept_request():
 
 	if result["stock"] - result["stock_required"] <= result["minimum_stock"]:
 		socketio.emit('alert_minimum_stock')
+	
+	url = f"http://{node.url}:{node.port}/sell"
+
+	payload = {
+		"client": result["requester_node"],
+		"product_id": result["product_id"],
+		"stock": result["stock_required"]
+	}
+
+	headers = {
+		"Content-Type": "application/json"
+	}
 
 	try:
-		node.cursor.execute("UPDATE inventory SET stock = stock - %s WHERE product_id = %s;", (result["stock_required"], result["product_id"]))
-		node.db_conn.commit()
+		response = requests.post(url, json=payload, headers=headers)
 	except Exception as e:
-	   node.db_conn.rollback()
-	   return jsonify({"error": "Error updating product to inventory when request accepted: {e}"}), 400
+		print(f"Error enviando la solicitud: {e}")
+
 
 	publish_connection = pika.BlockingConnection(pika.ConnectionParameters(result["ip_address"], heartbeat = 1))
 	publish_channel = publish_connection.channel()
@@ -727,7 +741,6 @@ def accept_request():
 				if req["uuid"] == request_uuid:
 					node.requests_cache.remove(req)
 					break
-			node.inventory_cache[result["product_id"]] -= result["stock_required"]
 	
 	return jsonify({"message": f"Request {request_uuid} accepted"}), 200
 
@@ -750,6 +763,8 @@ def decline_request():
 		return jsonify({"error": "UUID not found."}), 400
 
 	row = node.cursor.fetchone()
+	if not row:
+		return jsonify({"error": "Unexpected error on decline request method"}), 400
 	result = {
 		'requester_node': str(row[0]),
 		'ip_address': str(row[1])
@@ -790,20 +805,15 @@ def accept_response():
 
 	node.cursor.execute("SELECT product_id, stock, destination_node FROM my_requests WHERE uuid = %s;", (request_uuid,))
 	row = node.cursor.fetchone()
+	if not row:
+		return jsonify({"error": "Request not found on my requests list"}), 400
 	result = {
 		'product_id': str(row[0]),
 		'stock': row[1],
 		'destination_node': row[2]
 	}
 	
-	try:
-		node.cursor.execute("UPDATE inventory SET stock = stock + %s WHERE product_id = %s;", (result["stock"], result["product_id"]))
-		node.db_conn.commit()
-	except Exception as e:
-	   node.db_conn.rollback()
-	   return jsonify({"error": "Error adding product to inventory when request accepted: {e}"}), 400
-
-	url = node.url + "/buy"
+	url = f"http://{node.url}:{node.port}/buy"
 
 	payload = {
 		"seller": result["destination_node"],
@@ -819,7 +829,50 @@ def accept_response():
 		response = requests.post(url, json=payload, headers=headers)
 	except Exception as e:
 		print(f"Error enviando la solicitud: {e}")
+
+	try:
+		node.cursor.execute("DELETE FROM my_requests WHERE uuid = %s;", (request_uuid,))
+		node.db_conn.commit()
+	except Exception as e:
+		node.db_conn.rollback()
+		return jsonify({"error": "decline_request table deleting error"}), 400
+	finally:
+		with node.lock:
+			for req in node.my_requests_cache:
+				if req["uuid"] == request_uuid:
+					node.my_requests_cache.remove(req)
+					break
+
+	socketio.emit('acceptance-response', data)
 	return jsonify({"message": f"Request {request_uuid} resolved! Product added to inventory"}), 200
+
+@app.route("/decline_response", methods=["POST"])
+def decline_response():
+	data = request.json
+	if data is None:
+		return jsonify({"error": "Invalid JSON or no JSON provided"}), 400
+
+	request_uuid = data["uuid"]
+
+	node.cursor.execute("SELECT product_id, stock, destination_node FROM my_requests WHERE uuid = %s;", (request_uuid,))
+	row = node.cursor.fetchone()
+	if not row:
+		return jsonify({"error": "Request not found on my requests list"}), 400
+
+	try:
+		node.cursor.execute("DELETE FROM my_requests WHERE uuid = %s;", (request_uuid,))
+		node.db_conn.commit()
+	except Exception as e:
+		node.db_conn.rollback()
+		return jsonify({"error": "decline_request table deleting error"}), 400
+	finally:
+		with node.lock:
+			for req in node.my_requests_cache:
+				if req["uuid"] == request_uuid:
+					node.my_requests_cache.remove(req)
+					break
+	socketio.emit('declination-response', data)	
+	return jsonify({"message": f"Request {request_uuid} resolved! Product declined to transfer to my inventory"}), 200
 
 
 @app.route("/add_product", methods=["POST"])

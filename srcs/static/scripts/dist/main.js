@@ -374,6 +374,7 @@ $('#acceptance-form').on('submit', function (e) {
             alert(response.message);
             updateInventory();
             updateRequests();
+            updateTransactions();
         },
         error: function (response) {
             alert(response.responseJSON.error);
@@ -391,6 +392,7 @@ $('#declination-form').on('submit', function (e) {
         data: JSON.stringify({ request_uuid }),
         success: function (response) {
             alert(response.message);
+            updateRequests();
         },
         error: function (response) {
             alert(response.responseJSON.error);
@@ -421,6 +423,16 @@ socket.on('query_response', (data) => {
 });
 socket.on('alert_minimum_stock', () => {
     alert("Product on inventory will be on minimum stock levels!");
+});
+socket.on('acceptance-response', (data) => {
+    alert(`Request was accepted!: ${JSON.stringify(data)}`);
+    updateMyRequests();
+    updateTransactions();
+    updateInventory();
+});
+socket.on('declination-response', (data) => {
+    alert(`Request was declined!: ${JSON.stringify(data)}`);
+    updateMyRequests();
 });
 // Initial calls
 updateInventory();

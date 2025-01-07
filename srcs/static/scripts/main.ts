@@ -51,6 +51,10 @@ interface Transaction {
 	date: string;
 }
 
+interface ReqResponse {
+	uuid: string;
+}
+
 // INVENTORY
 async function fetchInventory(): Promise<InventoryDict> {
 	const response = await fetch('/api/inventory');
@@ -440,6 +444,7 @@ $('#acceptance-form').on('submit', function (e: JQuery.SubmitEvent) {
       alert(response.message);
 	  updateInventory();
 	  updateRequests();
+	  updateTransactions();
     },
     error: function (response: JQuery.jqXHR) {
       alert(response.responseJSON.error);
@@ -459,6 +464,7 @@ $('#declination-form').on('submit', function (e: JQuery.SubmitEvent) {
     data: JSON.stringify({ request_uuid }),
     success: function (response: { message: string }) {
       alert(response.message);
+	  updateRequests();
     },
     error: function (response: JQuery.jqXHR) {
       alert(response.responseJSON.error);
@@ -492,6 +498,18 @@ socket.on('query_response', (data: QueryResponse) => {
 
 socket.on('alert_minimum_stock', () => {
 	alert("Product on inventory will be on minimum stock levels!")
+});
+
+socket.on('acceptance-response', (data: ReqResponse) => {
+	alert(`Request was accepted!: ${JSON.stringify(data)}`)
+	updateMyRequests();
+	updateTransactions();
+	updateInventory();
+});
+
+socket.on('declination-response', (data: ReqResponse) => {
+	alert(`Request was declined!: ${JSON.stringify(data)}`)
+	updateMyRequests();
 });
 
 
